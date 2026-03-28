@@ -1,0 +1,96 @@
+# -*- coding: utf-8 -*-
+# @Time    : ${DATE} ${TIME}
+# @Author  : floraachy
+# @File    : ${NAME}.py
+# @Software: ${PRODUCT_NAME}
+# @Desc: 
+
+import pytest
+import allure
+import time
+from loguru import logger
+from config.settings import GLOBAL_VARS
+from core.requests_utils.case_dependence import CaseDependenceHandler
+
+
+@pytest.fixture(scope="module", autouse=True)
+def init_data():
+    """
+    运行测试之前，初始化数据;
+    运行测试之后，清理数据
+    """
+    init_data_config = ${init_data}
+    dependence_handler = CaseDependenceHandler(GLOBAL_VARS)
+    
+    with allure.step("模块初始化数据"):
+        logger.trace(f"全局变量：{GLOBAL_VARS}")
+        logger.debug("开始初始化数据...")
+        
+        try:
+            setup_start_time = time.time()
+            
+            if init_data_config.get("setup"):
+                logger.debug("执行前置依赖处理...")
+                with allure.step("前置依赖处理"):
+                    dependence_results = dependence_handler.case_dependence_handle(
+                        case_dependence=init_data_config["setup"],
+                        db_info=GLOBAL_VARS.get("db_info"))
+                    
+                    if dependence_results:
+                        GLOBAL_VARS.update(dependence_results)
+                        logger.debug(f"前置依赖处理完成，更新全局变量：{list(dependence_results.keys())}")
+            
+            setup_elapsed = time.time() - setup_start_time
+            logger.info(f"初始化数据完成，耗时: {setup_elapsed:.2f}s")
+            allure.attach(
+                f"初始化耗时: {setup_elapsed:.2f}秒",
+                name="初始化耗时",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            
+        except Exception as e:
+            logger.error(f"初始化数据失败: {str(e)}")
+            allure.attach(
+                str(e),
+                name="初始化错误",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            raise
+    
+    yield
+    
+    with allure.step("模块清理数据"):
+        logger.debug("开始清理数据...")
+        
+        try:
+            teardown_start_time = time.time()
+            
+            if init_data_config.get("teardown"):
+                logger.debug("执行后置依赖处理...")
+                with allure.step("后置依赖处理"):
+                    dependence_results = dependence_handler.case_dependence_handle(
+                        case_dependence=init_data_config["teardown"],
+                        db_info=GLOBAL_VARS.get("db_info"))
+                    
+                    if dependence_results:
+                        GLOBAL_VARS.update(dependence_results)
+                        logger.debug(f"后置依赖处理完成，更新全局变量：{list(dependence_results.keys())}")
+            
+            teardown_elapsed = time.time() - teardown_start_time
+            logger.info(f"清理数据完成，耗时: {teardown_elapsed:.2f}s")
+            logger.debug("初始化数据流程完成！")
+            
+            allure.attach(
+                f"清理耗时: {teardown_elapsed:.2f}秒",
+                name="清理耗时",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            
+        except Exception as e:
+            logger.error(f"清理数据失败: {str(e)}")
+            allure.attach(
+                str(e),
+                name="清理错误",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            raise

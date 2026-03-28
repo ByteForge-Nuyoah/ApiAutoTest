@@ -1,0 +1,47 @@
+case_common:
+  allure_epic: workspace
+  allure_feature: 用户登录模块
+  allure_story: 登录接口
+  case_markers:
+    - workspace
+    - smoke
+    - login
+
+case_info:
+-
+  id: login_01
+  title: 账号密码登录
+  run: True
+  severity: normal
+  url: /api/crm/v4/user/login
+  method: POST
+  headers:
+    Content-Type: application/json;charset=utf-8;
+  cookies:
+  request_type: json
+  payload:
+    username: admin
+    password: '"123123"'
+    appPlatform: work-space
+    appVersion: 0.1.1
+  files:
+  wait_seconds: 2
+  assert_response:
+    status_code: 200  # 状态码默认用==断言，无需额外配置
+    # 1. 断言token存在且等于预期值（若token固定，直接填预期token；若动态，用提取值）
+    assert_token_exist:
+      message: 断言响应中data.token字段等于预期值
+      expect_value: "admin"  # 从提供的响应中获取的实际token
+      assert_type: "=="  # 统一用==断言
+      type_jsonpath: "$.data.user.username"  # 提取响应中的token
+    assert_openid:
+      message: 断言响应中data.user.openid等于预期值
+      expect_value: "o3oc760tfUizHMk03BlecWSKkBW0"  # 从提供的响应中获取的实际openid
+      assert_type: "=="  # 统一用==断言
+      type_jsonpath: "$.data.user.openid"  # 提取响应中的openid
+  assert_sql:
+  extract:
+    response:
+      type_jsonpath:
+        token: $.data.token  # 提取token供后续用例复用
+        openid: $.data.user.openid  # 提取openid供后续用例复用

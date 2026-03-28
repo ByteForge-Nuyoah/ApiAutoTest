@@ -1,0 +1,11 @@
+host: ${DEMO_HOST}
+username: "${DEMO_USERNAME}"
+password: "${DEMO_PASSWORD}"
+appPlatform: "work-space"
+appVersion: "2.0.0"
+db_info:
+  db_host: ${DEMO_DB_HOST}
+  db_port: ${DEMO_DB_PORT}
+  db_user: ${DEMO_DB_USER}
+  db_pwd: ${DEMO_DB_PWD}
+  db_database: ${DEMO_DB_DATABASE}

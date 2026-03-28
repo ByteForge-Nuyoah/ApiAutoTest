@@ -1,0 +1,83 @@
+# -*- coding: utf-8 -*-
+# @Time    : ${DATE} ${TIME}
+# @Author  : 会飞的🐟
+# @File    : ${NAME}.py
+# @Software: ${PRODUCT_NAME}
+# @Desc: 
+
+import pytest
+import allure
+import time
+from loguru import logger
+from config.settings import GLOBAL_VARS
+from core.requests_utils.request_control import RequestControl
+from core.requests_utils.case_dependence import CaseDependenceHandler
+
+dependence_handler = CaseDependenceHandler(GLOBAL_VARS)
+
+cases = ${case_data}
+
+@allure.epic("${epic}")
+@allure.feature("${feature}")
+@allure.story("${story}")
+@pytest.mark.auto
+${markers}
+@pytest.mark.parametrize("case", cases, ids=lambda x: x["title"])
+def ${func_title}_auto(case):
+    case_id = case.get("id", "unknown")
+    case_title = case.get("title", "unknown")
+    
+    with allure.step(f"执行用例: {case_id} - {case_title}"):
+        try:
+            start_time = time.time()
+            logger.info(f"开始执行用例: {case_id} || {case_title}")
+            
+            with allure.step("前置依赖处理"):
+                if case.get("case_dependence") and case["case_dependence"].get("setup"):
+                    dependence_results = dependence_handler.case_dependence_handle(
+                        case_dependence=case["case_dependence"]["setup"],
+                        db_info=GLOBAL_VARS.get("db_info"))
+                    if dependence_results:
+                        GLOBAL_VARS.update(dependence_results)
+            
+            with allure.step("发送请求并验证"):
+                db_info = GLOBAL_VARS.get("db_info")
+                if db_info:
+                    res = RequestControl().api_request_flow(
+                        request_data=case, 
+                        global_var=GLOBAL_VARS, 
+                        db_info=db_info
+                    )
+                else:
+                    res = RequestControl().api_request_flow(
+                        request_data=case, 
+                        global_var=GLOBAL_VARS
+                    )
+                
+                if res:
+                    GLOBAL_VARS.update(res)
+            
+            with allure.step("后置依赖处理"):
+                if case.get("case_dependence") and case["case_dependence"].get("teardown"):
+                    dependence_results = dependence_handler.case_dependence_handle(
+                        case_dependence=case["case_dependence"]["teardown"],
+                        db_info=GLOBAL_VARS.get("db_info"))
+                    if dependence_results:
+                        GLOBAL_VARS.update(dependence_results)
+            
+            elapsed_time = time.time() - start_time
+            logger.info(f"用例执行完成: {case_id} || 耗时: {elapsed_time:.2f}s")
+            allure.attach(
+                f"执行时间: {elapsed_time:.2f}秒",
+                name="执行耗时",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            
+        except Exception as e:
+            logger.error(f"用例执行失败: {case_id} || 错误: {str(e)}")
+            allure.attach(
+                str(e),
+                name="错误信息",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            raise

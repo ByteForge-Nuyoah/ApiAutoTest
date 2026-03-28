@@ -1,0 +1,233 @@
+name: API Autotest CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Test environment'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test
+          - prod
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  test-env:
+    name: Run Tests (Test Env)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'test')
+    env:
+      EMAIL_USER: ${{ secrets.EMAIL_USER }}
+      EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+      EMAIL_HOST: ${{ secrets.EMAIL_HOST }}
+      EMAIL_TO_LIST: ${{ secrets.EMAIL_TO_LIST }}
+      DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+      DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+      WECHAT_WEBHOOK: ${{ secrets.WECHAT_WEBHOOK }}
+      TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      TEST_DB_HOST: ${{ secrets.TEST_DB_HOST }}
+      TEST_DB_PORT: ${{ secrets.TEST_DB_PORT }}
+      TEST_DB_USER: ${{ secrets.TEST_DB_USER }}
+      TEST_DB_PWD: ${{ secrets.TEST_DB_PWD }}
+      TEST_DB_DATABASE: ${{ secrets.TEST_DB_DATABASE }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Dependencies
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.pythonLocation }}
+          key: ${{ runner.os }}-py-${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-py-${{ env.PYTHON_VERSION }}-
+
+      - name: Install Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Generate Test Cases
+        run: python -c "from core.case_generate_utils.case_fun_generate import generate_cases; generate_cases()"
+      
+      - name: Prepare .env from secrets
+        run: |
+          env_vars=(
+            "EMAIL_USER"
+            "EMAIL_PASSWORD"
+            "EMAIL_HOST"
+            "EMAIL_TO_LIST"
+            "DINGTALK_WEBHOOK"
+            "DINGTALK_SECRET"
+            "WECHAT_WEBHOOK"
+            "TEST_USERNAME"
+            "TEST_PASSWORD"
+            "TEST_DB_HOST"
+            "TEST_DB_PORT"
+            "TEST_DB_USER"
+            "TEST_DB_PWD"
+            "TEST_DB_DATABASE"
+          )
+          for var in "${env_vars[@]}"; do
+            if [ -n "${!var}" ]; then
+              echo "${var}=${!var}" >> .env
+            fi
+          done
+
+      - name: Run API Tests
+        run: python run.py -env test -report no
+
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: outputs/report/
+          retention-days: 7
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "::warning::Tests failed in Test environment"
+
+  prod-env:
+    name: Run Tests (Production Env)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
+    env:
+      EMAIL_USER: ${{ secrets.EMAIL_USER }}
+      EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+      EMAIL_HOST: ${{ secrets.EMAIL_HOST }}
+      EMAIL_TO_LIST: ${{ secrets.EMAIL_TO_LIST }}
+      DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+      DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+      WECHAT_WEBHOOK: ${{ secrets.WECHAT_WEBHOOK }}
+      DEMO_HOST: ${{ secrets.DEMO_HOST }}
+      DEMO_USERNAME: ${{ secrets.DEMO_USERNAME }}
+      DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
+      DEMO_DB_HOST: ${{ secrets.DEMO_DB_HOST }}
+      DEMO_DB_PORT: ${{ secrets.DEMO_DB_PORT }}
+      DEMO_DB_USER: ${{ secrets.DEMO_DB_USER }}
+      DEMO_DB_PWD: ${{ secrets.DEMO_DB_PWD }}
+      DEMO_DB_DATABASE: ${{ secrets.DEMO_DB_DATABASE }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Dependencies
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.pythonLocation }}
+          key: ${{ runner.os }}-py-${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-py-${{ env.PYTHON_VERSION }}-
+
+      - name: Install Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Generate Test Cases
+        run: python -c "from core.case_generate_utils.case_fun_generate import generate_cases; generate_cases()"
+      
+      - name: Prepare .env from secrets
+        run: |
+          env_vars=(
+            "EMAIL_USER"
+            "EMAIL_PASSWORD"
+            "EMAIL_HOST"
+            "EMAIL_TO_LIST"
+            "DINGTALK_WEBHOOK"
+            "DINGTALK_SECRET"
+            "WECHAT_WEBHOOK"
+            "DEMO_HOST"
+            "DEMO_USERNAME"
+            "DEMO_PASSWORD"
+            "DEMO_DB_HOST"
+            "DEMO_DB_PORT"
+            "DEMO_DB_USER"
+            "DEMO_DB_PWD"
+            "DEMO_DB_DATABASE"
+          )
+          for var in "${env_vars[@]}"; do
+            if [ -n "${!var}" ]; then
+              echo "${var}=${!var}" >> .env
+            fi
+          done
+
+      - name: Run API Tests
+        run: python run.py -env prod -report no
+
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-results
+          path: outputs/report/
+          retention-days: 30
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "::warning::Tests failed in Production environment"
+
+  lint:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Dependencies
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.pythonLocation }}
+          key: ${{ runner.os }}-py-${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-py-${{ env.PYTHON_VERSION }}-
+
+      - name: Install Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Run Ruff Linter
+        run: ruff check . --output-format=github
+        continue-on-error: true

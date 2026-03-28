@@ -1,0 +1,14 @@
+# 接口地址
+host: https://crmapi-dev.spreadwin.cn
+# 测试账号
+username: "${TEST_USERNAME}"
+password: "${TEST_PASSWORD}"
+appPlatform: "work-space"
+appVersion: "1.0.1"
+# 数据库配置
+db_info:
+  db_host: ${TEST_DB_HOST} # 数据库主机地址
+  db_port: ${TEST_DB_PORT} # 数据库端口号
+  db_user: ${TEST_DB_USER} # 数据库用户名
+  db_pwd: ${TEST_DB_PWD} # 数据库密码
+  db_database: ${TEST_DB_DATABASE} # 数据库名称

@@ -1,0 +1,17 @@
+{
+  "projects": {
+    "workspace": {
+      "name": "workspace",
+      "description": "自动发现的项目: workspace",
+      "status": "active",
+      "created_at": "2026-03-28T11:44:12.591132",
+      "updated_at": "2026-03-28T11:44:12.591136",
+      "case_file_type": 1,
+      "env": "test",
+      "markers": [],
+      "report_config": {},
+      "custom_config": {}
+    }
+  },
+  "updated_at": "2026-03-28T11:44:12.591169"
+}

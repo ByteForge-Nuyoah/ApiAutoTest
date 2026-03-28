@@ -1,0 +1,37 @@
+case_common:
+  allure_epic: workspace
+  allure_feature: 合作商管理
+  allure_story: 获取合作商列表
+  case_markers:
+    - workspace
+    - smoke
+    - getWidList
+
+case_info:
+-
+  id: getWidList_01
+  title: 获取合作商列表
+  run: True
+  severity: normal
+  url: /api/crm/v4/system/getWidList
+  method: GET
+  headers:
+    Content-Type: application/json;charset=utf-8;
+    Authorization: Bearer ${token}
+  cookies:
+  request_type: json
+  payload:
+  files:
+  wait_seconds: 2
+  case_dependence:
+    setup:
+      interface: login_01
+  assert_response:
+    status_code: 200
+    assert_cname:
+      message: 断言cname
+      expect_value: "小镜"
+      assert_type: "=="
+      type_jsonpath: "$.data[0].cname"
+  assert_sql:
+  extract:

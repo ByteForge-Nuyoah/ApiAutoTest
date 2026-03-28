@@ -1,0 +1,40 @@
+case_common:
+  allure_epic: workspace
+  allure_feature: 登录用户信息
+  allure_story: 用户信息模块
+  case_markers:
+    - workspace
+    - smoke
+    - self
+
+case_info:
+-
+  id: self
+  title: 获取用户信息
+  run: True
+  severity: normal
+  url: /api/crm/v4/user/self
+  method: GET
+  headers:
+    Content-Type: application/json;charset=utf-8;
+    Authorization: Bearer ${token}
+  cookies:
+  request_type: json
+  payload:  {}
+  files:
+  case_dependence:
+    setup:
+      interface: login_01
+  wait_seconds: 2
+  assert_response:
+    status_code: 200
+    assert_userId_exist:
+      message: 断言响应中data.userId字段存在
+      expect_value: "5d89d678ef0703376a4650a3"
+      assert_type: "=="  # 统一用==断言
+      type_jsonpath: "$.data.userId"
+  assert_sql:
+  extract:
+    response:
+      type_jsonpath:
+        userId: $.data.userId
