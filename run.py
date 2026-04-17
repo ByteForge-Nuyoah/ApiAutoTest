@@ -13,14 +13,13 @@ from pathlib import Path
 from loguru import logger
 from datetime import datetime
 from utils.tools.schedule_task import start_schedule
-from utils.tools.parallel_config import get_parallel_strategy_from_config
 from utils.logger_utils.loguru_log import capture_logs
 from utils.files_utils.files_handle import load_yaml_file
 from core.report_utils.send_result_handle import send_result
 from core.report_utils.platform_handle import PlatformHandle
 from core.report_utils.allure_handle import generate_allure_report
 from core.case_generate_utils.case_fun_generate import generate_cases, generate_cases_for_projects, generate_cases_for_project
-from config.settings import LOG_LEVEL, GLOBAL_VARS, REPORT, RERUN, RERUN_DELAY, MAX_FAIL, LOG_LEVEL_STD, PARALLEL_CONFIG
+from config.settings import LOG_LEVEL, GLOBAL_VARS, REPORT, RERUN, RERUN_DELAY, MAX_FAIL, LOG_LEVEL_STD
 from config.settings import BASE_DIR, REPORT_DIR, LOG_DIR, ENV_DIR, ALLURE_RESULTS_DIR, ALLURE_HTML_DIR, AUTO_CASE_DIR, \
     ALLURE_CONFIG_DIR, PROJECT_DIR
 
@@ -30,10 +29,8 @@ from config.settings import BASE_DIR, REPORT_DIR, LOG_DIR, ENV_DIR, ALLURE_RESUL
 @click.option("-env", default="test", help="输入运行环境：test 或 live")
 @click.option("-m", default=None, help="选择需要运行的用例：python.ini配置的名称")
 @click.option("-cron", default=False, is_flag=True, help="是否开启定时任务")
-@click.option("-n", default=None, help="并行进程数：auto(自动)、数字(指定进程数)、0(禁用并行)")
-@click.option("-dist", default=None, help="分布模式：loadscope(同模块优先)、loadfile(同文件优先)、each(每个进程全部用例)")
 @click.option("-project", default=None, help="指定运行的项目名称，多个项目用逗号分隔，不指定则运行所有项目")
-def run(env, m, report, cron, n, dist, project):
+def run(env, m, report, cron, project):
     if cron:
         start_schedule()
         return
@@ -76,25 +73,6 @@ def run(env, m, report, cron, n, dist, project):
                     '--clean-alluredir', f'--env={env}']
         if m:
             arg_list.append(f"-m {m}")
-
-        # ------------------------ 并行执行参数 ------------------------
-        parallel_config = PARALLEL_CONFIG.copy()
-        if n is not None:
-            if n == "0":
-                parallel_config["enabled"] = False
-            elif n == "auto":
-                parallel_config["workers"] = "auto"
-            else:
-                parallel_config["workers"] = int(n)
-        
-        if dist is not None:
-            parallel_config["distribution"] = dist
-        
-        parallel_strategy = get_parallel_strategy_from_config(parallel_config)
-        parallel_args = parallel_strategy.get_pytest_args()
-        arg_list.extend(parallel_args)
-        
-        logger.info(f"并行执行策略: {parallel_strategy}")
 
         # ------------------------ pytest执行测试用例 ------------------------
         pytest.main(args=arg_list)
