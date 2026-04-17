@@ -1,7 +1,7 @@
 FROM python:3.13-slim
 
 LABEL maintainer="API Autotest Team"
-LABEL version="2.0"
+LABEL version="2.8"
 LABEL description="API Automation Test Framework"
 
 ENV PYTHONDONTWRITEBYTECODE=1

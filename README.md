@@ -120,8 +120,7 @@ python3 run.py
 | `--m` | `-m` | `None` | 运行指定标记 (Marker) 的用例 | `python3 run.py -m smoke` |
 | `--report` | `-report` | `yes` | 是否生成 Allure HTML 报告 (yes/no) | `python3 run.py -report no` |
 | `--cron` | `-cron` | `False` | 是否开启定时任务模式 | `python3 run.py -cron` |
-| `--n` | `-n` | `auto` | 并行进程数：auto(自动)、数字(指定)、0(禁用) | `python3 run.py -n 4` |
-| `--dist` | `-dist` | `loadscope` | 分布模式：loadscope/loadfile/each | `python3 run.py -dist loadfile` |
+| `--project` | `-project` | `None` | 指定运行的项目名称，多个项目用逗号分隔 | `python3 run.py -project workspace` |
 
 ### 2. 常见运行场景
 
@@ -152,43 +151,7 @@ python3 run.py -m excel_case
 python3 run.py -env test -report no
 ```
 
-**场景四：并行执行优化**
-```bash
-# 自动检测 CPU 核心数并行执行（推荐）
-python3 run.py -n auto
-
-# 指定 4 个进程并行执行
-python3 run.py -n 4
-
-# 禁用并行执行（串行执行）
-python3 run.py -n 0
-
-# 指定分布模式：同文件优先
-python3 run.py -n 4 -dist loadfile
-
-# 指定分布模式：同模块优先（默认）
-python3 run.py -n 4 -dist loadscope
-```
-
-**并行执行配置**（`config/settings.py`）：
-```python
-PARALLEL_CONFIG = {
-    "enabled": True,        # 是否启用并行执行
-    "workers": "auto",      # 进程数：auto(自动)、数字(指定)
-    "distribution": "loadscope",  # 分布模式
-    "max_workers": 8,       # 最大进程数限制
-}
-```
-
-**分布模式说明：**
-
-| 模式 | 说明 | 适用场景 |
-|------|------|----------|
-| `loadscope` | 同模块用例分配到同一进程 | 模块间有依赖关系 |
-| `loadfile` | 同文件用例分配到同一进程 | 文件间有依赖关系 |
-| `each` | 每个进程执行全部用例 | 需要完全隔离的场景 |
-
-**场景五：开启定时任务**
+**场景四：开启定时任务**
 ```bash
 # 启动定时任务调度器（按配置文件中的时间运行）
 python3 run.py -cron
@@ -1154,6 +1117,13 @@ key: ${{ runner.os }}-py-${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements.t
 
 ## 十七、更新日志
 
+### v2.8 (2026-04)
+*   移除多进程并行执行功能
+    *   移除 `-n` 和 `-dist` 命令行参数
+    *   移除 `PARALLEL_CONFIG` 配置
+    *   移除 `parallel_config.py` 模块
+    *   测试用例改为单线程串行执行，保证执行顺序稳定
+
 ### v2.7 (2026-03)
 *   新增多项目支持
     *   支持多项目并行管理，不同项目用例存放在独立目录
@@ -1177,14 +1147,6 @@ key: ${{ runner.os }}-py-${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements.t
     *   新增 `--snapshot` 命令行参数
     *   提供 `failure_tracker` fixture
     *   支持请求/响应信息自动记录
-
-### v2.4 (2026-03)
-*   新增并行执行策略
-    *   支持自动检测 CPU 核心数并行执行
-    *   支持配置化并行参数（进程数、分布模式）
-    *   新增 `-n` 和 `-dist` 命令行参数
-    *   提供多种分布模式：loadscope、loadfile、each
-    *   自动优化进程数，避免资源浪费
 
 ### v2.3 (2026-03)
 *   新增数据清理机制
