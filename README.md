@@ -888,28 +888,6 @@ PROJECT_CONFIG = {
     }
 }
 ```
-
-### 5. 项目管理 API
-
-```python
-from core.project_manager import get_project_manager
-
-# 获取项目管理器
-manager = get_project_manager()
-
-# 创建项目
-manager.create_project(
-    name="new_project",
-    description="新项目描述"
-)
-
-# 列出所有项目
-projects = manager.list_projects()
-
-# 获取项目统计
-stats = manager.get_project_stats("workspace")
-```
-
 ### 6. 最佳实践
 
 1. **项目隔离**：每个项目使用独立目录，避免用例冲突
@@ -987,195 +965,1044 @@ Excel 列名与内部字段的映射关系：
 - `extract`：填写需要从响应中提取的参数，如 `{"token": "$.data.token"}`
 - `assert_response`：填写断言规则，如 `{"status_code": 200, "assert_code": {...}}`
 
-## 十二、Docker 支持
+## 十二、复杂场景测试示例
 
-### 1. 构建镜像
-```bash
-docker build -t api-autotest:latest .
-```
+本章节展示框架支持的各种复杂测试场景，帮助您应对实际业务中的多样化测试需求。
 
-### 2. 运行容器
-```bash
-# 默认运行测试环境
-docker run --rm api-autotest:latest
+### 1. 多步骤业务流程测试
 
-# 运行生产环境
-docker run --rm api-autotest:latest -env prod -report yes
+模拟完整的业务流程，通过用例依赖实现多步骤串联。
 
-# 挂载报告目录
-docker run --rm -v $(pwd)/outputs:/app/outputs api-autotest:latest
-```
+**场景：电商订单完整流程（登录 → 添加购物车 → 创建订单 → 支付 → 查询订单状态）**
 
-### 3. Dockerfile 优化说明
-Dockerfile 采用分层构建策略，优化镜像构建速度：
-
-| 层级 | 内容 | 变化频率 | 缓存利用 |
-|------|------|----------|----------|
-| 1 | 基础镜像 | 极低 | ✅ |
-| 2 | 系统依赖 | 低 | ✅ |
-| 3 | Python 依赖 | 中 | ✅ |
-| 4 | 源代码 | 高 | 按需更新 |
-
-**构建效率：**
-- 首次构建：完整安装依赖（约 2-3 分钟）
-- 后续构建（仅代码变化）：跳过依赖安装（约 10-20 秒）
-
-## 十三、CI/CD 集成
-
-### 1. GitHub Actions
-项目已配置 `.github/workflows/ci.yaml`，支持以下功能：
-
-**触发条件：**
-- Push 到 `main` / `master` 分支
-- Pull Request 到 `main` / `master` 分支
-- 手动触发（可选择 test/prod 环境）
-
-**流水线特性：**
-| 特性 | 说明 |
-|------|------|
-| 并发控制 | 同一分支同时只运行一个流水线 |
-| 依赖缓存 | 缓存 Python 环境，跳过重复安装 |
-| 多环境支持 | main 分支 → test 环境，master 分支 → prod 环境 |
-| 测试报告 | 自动上传测试报告，保留 7-30 天 |
-| 代码检查 | PR 时运行 Ruff 代码质量检查 |
-
-**缓存策略：**
 ```yaml
-# 缓存整个 Python 环境
-path: ${{ env.pythonLocation }}
-key: ${{ runner.os }}-py-${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+case_common:
+  allure_epic: 电商平台
+  allure_feature: 订单模块
+  allure_story: 订单完整流程
+  case_markers: ['order', 'p0', 'workflow']
+
+case_info:
+  # 步骤1：用户登录，提取token和用户ID
+  - id: workflow_login_01
+    title: 用户登录获取凭证
+    url: /api/user/login
+    method: POST
+    headers:
+      Content-Type: application/json
+    request_type: json
+    payload:
+      username: ${username}
+      password: ${password}
+    extract:
+      response:
+        type_jsonpath:
+          token: $.data.token
+          user_id: $.data.user.id
+          cart_session: $.data.cart_session_id
+    assert_response:
+      status_code: 200
+      assert_code:
+        type_jsonpath: "$.code"
+        expect_value: 0
+        assert_type: "=="
+
+  # 步骤2：添加商品到购物车（依赖登录）
+  - id: workflow_add_cart_01
+    title: 添加商品到购物车
+    url: /api/cart/add
+    method: POST
+    headers:
+      Content-Type: application/json
+      Authorization: Bearer ${token}
+    request_type: json
+    payload:
+      user_id: ${user_id}
+      product_id: 10001
+      quantity: 2
+      cart_session: ${cart_session}
+    case_dependence:
+      setup:
+        interface: workflow_login_01
+    extract:
+      response:
+        type_jsonpath:
+          cart_item_id: $.data.item_id
+          total_price: $.data.total_price
+    assert_response:
+      status_code: 200
+      assert_quantity:
+        type_jsonpath: "$.data.quantity"
+        expect_value: 2
+        assert_type: "=="
+
+  # 步骤3：创建订单（依赖添加购物车）
+  - id: workflow_create_order_01
+    title: 创建订单
+    url: /api/order/create
+    method: POST
+    headers:
+      Authorization: Bearer ${token}
+    request_type: json
+    payload:
+      user_id: ${user_id}
+      cart_item_ids: ["${cart_item_id}"]
+      address_id: 1
+      payment_method: alipay
+    case_dependence:
+      setup:
+        interface: [workflow_login_01, workflow_add_cart_01]
+    extract:
+      response:
+        type_jsonpath:
+          order_id: $.data.order_id
+          order_no: $.data.order_no
+          pay_amount: $.data.pay_amount
+    assert_response:
+      status_code: 200
+      assert_status:
+        type_jsonpath: "$.data.status"
+        expect_value: "pending_payment"
+        assert_type: "=="
+
+  # 步骤4：模拟支付（依赖创建订单）
+  - id: workflow_pay_order_01
+    title: 订单支付
+    url: /api/order/pay
+    method: POST
+    headers:
+      Authorization: Bearer ${token}
+    request_type: json
+    payload:
+      order_id: ${order_id}
+      order_no: ${order_no}
+      pay_amount: ${pay_amount}
+      payment_method: alipay
+      transaction_id: "ALI_${generate_time('%Y%m%d%H%M%S')}_${generate_random_int(1000,9999)}"
+    case_dependence:
+      setup:
+        interface: workflow_create_order_01
+    extract:
+      response:
+        type_jsonpath:
+          payment_id: $.data.payment_id
+          paid_time: $.data.paid_time
+    assert_response:
+      status_code: 200
+      assert_pay_status:
+        type_jsonpath: "$.data.pay_status"
+        expect_value: "success"
+        assert_type: "=="
+
+  # 步骤5：查询订单状态验证（依赖支付）
+  - id: workflow_query_order_01
+    title: 查询订单状态
+    url: /api/order/detail
+    method: GET
+    headers:
+      Authorization: Bearer ${token}
+    request_type: params
+    payload:
+      order_id: ${order_id}
+    case_dependence:
+      setup:
+        interface: workflow_pay_order_01
+    assert_response:
+      status_code: 200
+      assert_order_status:
+        type_jsonpath: "$.data.status"
+        expect_value: "paid"
+        assert_type: "=="
+      assert_paid_time:
+        type_jsonpath: "$.data.paid_time"
+        expect_value: "${paid_time}"
+        assert_type: "=="
+    # 数据库断言：验证订单状态已更新
+    assert_sql:
+      - sql: "SELECT status FROM orders WHERE order_id='${order_id}'"
+        expect_value: "paid"
+        assert_type: "=="
 ```
 
-**条件安装：**
-- 缓存命中：跳过依赖安装
-- 缓存未命中：安装依赖并缓存
+### 2. 文件上传与下载测试
 
-### 2. Secrets 配置
-在 GitHub 仓库的 Settings → Secrets and variables → Actions 中配置：
+框架支持文件上传和下载操作，适用于报表导出、附件上传等场景。
 
-| Secret 名称 | 说明 |
-|-------------|------|
-| `TEST_USERNAME` | 测试环境用户名 |
-| `TEST_PASSWORD` | 测试环境密码 |
-| `TEST_DB_HOST` | 测试环境数据库地址 |
-| `TEST_DB_PWD` | 测试环境数据库密码 |
-| `DINGTALK_WEBHOOK` | 钉钉机器人 Webhook |
-| `EMAIL_USER` | 邮件发送账号 |
-| `EMAIL_PASSWORD` | 邮件授权码 |
+**场景一：文件上传测试**
 
-## 十四、常见问题与排查
+```yaml
+case_common:
+  allure_epic: 文件管理
+  allure_feature: 文件操作
+  allure_story: 文件上传
+  case_markers: ['file', 'upload']
 
-### 1. 忽略（deselected）与跳过（skipped）的区别
-- **deselected**：因 `-m/-k` 等筛选条件不匹配被收集阶段排除
-- **skipped**：在执行阶段被显式跳过（`run=False`）
+case_info:
+  - id: file_upload_01
+    title: 上传单个文件
+    url: /api/file/upload
+    method: POST
+    headers:
+      Authorization: Bearer ${token}
+    request_type: file
+    payload: file  # 文件字段名
+    files: files/test_image.png  # 文件路径，相对于 files/ 目录
+    extract:
+      response:
+        type_jsonpath:
+          file_id: $.data.file_id
+          file_url: $.data.url
+    assert_response:
+      status_code: 200
+      assert_file_id:
+        type_jsonpath: "$.data.file_id"
+        expect_value: null
+        assert_type: "!="
 
-### 2. 标记筛选建议
-- 若看到大量 `deselected`，请确认所用标记与用例实际标记一致
-- 可在 Excel 的 `markers` 列或 YAML 的 `case_common.case_markers` 中配置标记
+  - id: file_upload_multiple_01
+    title: 批量上传多个文件（手动编写的测试用例）
+    run: True
+    severity: normal
+```
 
-### 3. Allure 报告查看
-- 结果目录：`outputs/report/allure_results`
-- HTML 报告：`outputs/report/allure_html`
-- 命令行查看：`allure open outputs/report/allure_results`
+**手动编写批量上传测试用例示例：**
 
-### 4. 导入冲突（import file mismatch）
-- 同名 Excel 可能生成同名 .py，导致 Pytest 发现两个模块
-- 请确保同目录内文件名唯一或清理 `testcases/test_auto_case/` 后再生成
+```python
+# testcases/test_manual_case/test_file_upload.py
+import pytest
+import os
+from config.settings import FILES_DIR, GLOBAL_VARS
+from core.requests_utils.base_request import BaseRequest
 
-## 十五、依赖库
-核心依赖如下，详细列表请见 `requirements.txt`：
-*   pytest
-*   allure-pytest
-*   requests
-*   loguru
-*   pyyaml
-*   openpyxl
-*   python-dotenv
-*   yagmail
+@pytest.mark.file
+@pytest.mark.upload
+def test_batch_upload_files():
+    """
+    批量上传多个文件测试
+    """
+    token = GLOBAL_VARS.get("token")
+    upload_url = GLOBAL_VARS.get("host") + "/api/file/batch-upload"
+    
+    # 获取 files 目录下所有图片文件
+    files_dir = FILES_DIR
+    image_files = [f for f in os.listdir(files_dir) if f.endswith(('.png', '.jpg', '.jpeg'))]
+    
+    uploaded_ids = []
+    
+    for image_file in image_files[:5]:  # 上传前5个文件
+        file_path = os.path.join(files_dir, image_file)
+        
+        req_data = {
+            "url": upload_url,
+            "method": "POST",
+            "headers": {"Authorization": f"Bearer {token}"},
+            "request_type": "file",
+            "payload": "files",
+            "files": file_path
+        }
+        
+        response = BaseRequest.send_request(req_data)
+        
+        assert response.status_code == 200
+        file_id = response.json().get("data", {}).get("file_id")
+        if file_id:
+            uploaded_ids.append(file_id)
+    
+    # 验证所有文件上传成功
+    assert len(uploaded_ids) == min(5, len(image_files))
+    
+    # 保存上传的文件ID供后续使用
+    GLOBAL_VARS["uploaded_file_ids"] = uploaded_ids
+```
 
-## 十六、注意事项
+**场景二：文件下载/导出测试**
 
-### 1. 用例文件命名规范
-*   必须以 `test` 开头（例如 `test_login.yaml`）
-*   文件名建议使用下划线 `_` 分隔
+```yaml
+case_common:
+  allure_epic: 报表管理
+  allure_feature: 数据导出
+  allure_story: Excel导出
+  case_markers: ['export', 'report']
 
-### 2. 配置与安全
-*   环境配置文件：使用 `-env abc` 运行时，必须确保 `config/abc.yaml` 存在
-*   敏感信息：`.env` 文件**严禁提交到代码仓库**（`.gitignore` 已默认忽略）
-*   CI/CD 环境：请在 GitHub Secrets 中配置对应变量
+case_info:
+  - id: report_export_01
+    title: 导出销售报表
+    url: /api/report/export
+    method: POST
+    headers:
+      Authorization: Bearer ${token}
+      Content-Type: application/json
+    request_type: export  # 使用 export 类型自动下载文件
+    payload:
+      report_type: sales
+      date_range:
+        start_date: "${generate_time('%Y-%m-%d', days=-30)}"
+        end_date: "${generate_time('%Y-%m-%d')}"
+      format: excel
+    case_dependence:
+      setup:
+        interface: workflow_login_01
+    assert_response:
+      status_code: 200
+      # 文件下载后自动保存到 outputs/download_files/ 目录
+```
 
-### 3. Excel 用例编写
-*   数字字符串需保留原样时，在单元格前加单引号 `'`（如 `'13800138000`）
-*   框架会自动忽略 `id` 为空的行
+### 3. 数据库断言与数据清理
 
-### 4. Allure 报告
-*   本地查看报告需要使用 `allure open` 命令
-*   直接浏览器打开 HTML 文件可能无法加载数据
+测试数据库操作后验证数据正确性，并在测试完成后自动清理测试数据。
 
-### 5. 依赖安装
-*   macOS 推荐使用虚拟环境：`python3 -m venv venv && source venv/bin/activate`
+**场景：创建用户并验证数据库记录**
 
-## 十七、更新日志
+```yaml
+case_common:
+  allure_epic: 用户管理
+  allure_feature: 用户 CRUD
+  allure_story: 用户创建与验证
+  case_markers: ['user', 'database', 'cleanup']
 
-### v2.8 (2026-04)
-*   移除多进程并行执行功能
-    *   移除 `-n` 和 `-dist` 命令行参数
-    *   移除 `PARALLEL_CONFIG` 配置
-    *   移除 `parallel_config.py` 模块
-    *   测试用例改为单线程串行执行，保证执行顺序稳定
+case_info:
+  - id: db_user_create_01
+    title: 创建用户并验证数据库
+    url: /api/user/create
+    method: POST
+    headers:
+      Authorization: Bearer ${token}
+      Content-Type: application/json
+    request_type: json
+    payload:
+      username: "test_${generate_name(lan='zh')}"
+      email: "${generate_email(lan='zh')}"
+      phone: "${generate_phone(lan='zh')}"
+      department: "${generate_company_name(lan='zh')}"
+      # 使用时间戳确保唯一性
+      create_time: "${generate_time('%Y-%m-%d %H:%M:%S')}"
+    case_dependence:
+      setup:
+        interface: workflow_login_01
+    extract:
+      response:
+        type_jsonpath:
+          new_user_id: $.data.user_id
+          new_username: $.data.username
+    assert_response:
+      status_code: 200
+      assert_code:
+        type_jsonpath: "$.code"
+        expect_value: 0
+        assert_type: "=="
+    # 数据库断言：验证用户数据已正确写入
+    assert_sql:
+      - sql: "SELECT username, email FROM users WHERE user_id='${new_user_id}'"
+        expect_value:
+          username: "${new_username}"
+          email: "${generate_email(lan='zh')}"
+        assert_type: "=="
+      # 验证用户状态为激活状态
+      - sql: "SELECT status FROM users WHERE user_id='${new_user_id}'"
+        expect_value: "active"
+        assert_type: "=="
 
-### v2.7 (2026-03)
-*   新增多项目支持
-    *   支持多项目并行管理，不同项目用例存放在独立目录
-    *   新增 `-project` 命令行参数，支持指定运行项目
-    *   新增项目管理模块 `project_manager.py`
-    *   项目用例自动生成到独立目录
-    *   支持项目管理 API
+  - id: db_user_update_01
+    title: 更新用户信息并验证数据库
+    url: /api/user/update
+    method: PUT
+    headers:
+      Authorization: Bearer ${token}
+    request_type: json
+    payload:
+      user_id: ${new_user_id}
+      department: "研发部"
+      role: "engineer"
+    case_dependence:
+      setup:
+        interface: db_user_create_01
+    assert_sql:
+      - sql: "SELECT department, role FROM users WHERE user_id='${new_user_id}'"
+        expect_value:
+          department: "研发部"
+          role: "engineer"
+        assert_type: "=="
+```
 
-### v2.6 (2026-03)
-*   新增 Mock 接口数据服务
-    *   支持多种 Mock 模式：stub、record、replay、mixed
-    *   新增 `--mock` 命令行参数
-    *   提供 `mock_service` 和 `mock_rule` fixture
-    *   内置常用 Mock 数据模板
-    *   支持自定义响应构建器和请求匹配器
+**数据清理配置（settings.py）：**
 
-### v2.5 (2026-03)
-*   新增异常处理增强
-    *   统一异常分类与处理机制
-    *   测试失败自动捕获快照
-    *   新增 `--snapshot` 命令行参数
-    *   提供 `failure_tracker` fixture
-    *   支持请求/响应信息自动记录
+```python
+DATA_CLEANUP_CONFIG = {
+    "enabled": True,
+    "databases": {
+        "default": {
+            "host": "${DB_HOST}",
+            "port": 3306,
+            "user": "root",
+            "password": "${DB_PWD}",
+            "database": "test_db",
+            "ssh": False
+        }
+    },
+    "cleanup_on_failure": True,
+    "cleanup_on_success": True
+}
+```
 
-### v2.3 (2026-03)
-*   新增数据清理机制
-    *   支持数据库快照与恢复
-    *   支持注册清理任务自动执行
-    *   支持手动数据准备与清理
-    *   新增 `--cleanup` 命令行参数
-    *   提供 `data_cleanup` 和 `db_snapshot` fixture
+**手动数据清理示例（Python测试用例）：**
 
-### v2.2 (2026-03)
-*   新增定时任务功能
-    *   支持配置化定时任务调度
-    *   可配置运行时间、环境、报告、标记等
-    *   支持后台运行和 screen 方式运行
+```python
+# testcases/test_manual_case/test_user_cleanup.py
+import pytest
+from utils.database_utils.mysql_handle import MysqlServer
+from config.settings import GLOBAL_VARS
 
-### v2.1 (2026-03)
-*   优化 GitHub Actions CI 配置
-    *   缓存整个 Python 环境，避免重复安装依赖
-    *   条件安装：缓存命中时跳过依赖安装步骤
-    *   移除 matrix 策略，改为独立 job
-*   优化 Dockerfile 构建策略
-    *   分层复制源代码，最大化利用 Docker 缓存
-    *   源代码变化时不再重新安装依赖
-*   完善 `.gitignore` 和 `.dockerignore` 配置
+@pytest.mark.user
+@pytest.mark.cleanup
+def test_user_with_cleanup(data_cleanup):
+    """
+    创建测试用户，测试完成后自动清理
+    """
+    # 注册清理任务
+    test_username = f"cleanup_test_{int(time.time())}"
+    
+    # 创建用户（API调用）
+    # ...
+    
+    # 注册清理SQL
+    data_cleanup.register_cleanup(
+        test_id="test_user_cleanup",
+        cleanup_sql=f"DELETE FROM users WHERE username='{test_username}'",
+        db_name="default"
+    )
+    
+    # 执行测试验证...
+    # 测试结束后自动执行清理SQL
+```
 
-### v2.0 (2026-03)
-*   优化 Excel 用例文件名生成格式：`test_excel_<文件名>.py`
-*   新增 Docker 容器化支持
-*   优化 GitHub Actions CI 配置（并发控制、代码检查）
-*   改进测试用例生成逻辑，避免文件名冲突
-*   增强 Allure 报告元数据提取
+### 4. 动态参数生成（Faker 数据）
 
+框架集成 Faker 库，支持生成随机测试数据，适用于参数化测试和数据驱动测试。
+
+**可用的 Faker 方法：**
+
+| 方法 | 说明 | 示例 |
+|------|------|------|
+| `generate_name(lan='zh')` | 生成姓名 | `${generate_name(lan='zh')}` → 张三 |
+| `generate_email(lan='zh')` | 生成邮箱 | `${generate_email()}` → test@example.com |
+| `generate_phone(lan='zh')` | 生成手机号 | `${generate_phone(lan='zh')}` → 13812345678 |
+| `generate_id_number(lan='zh')` | 生成身份证号 | `${generate_id_number(lan='zh')}` |
+| `generate_company_name(lan='zh')` | 生成公司名 | `${generate_company_name(lan='zh')}` → 阿里巴巴 |
+| `generate_address(lan='zh')` | 生成地址 | `${generate_address(lan='zh')}` |
+| `generate_city(lan='zh')` | 生成城市 | `${generate_city(lan='zh')}` → 北京市 |
+| `generate_random_int(min, max)` | 生成随机整数 | `${generate_random_int(1, 100)}` |
+| `generate_time(fmt, days)` | 生成时间 | `${generate_time('%Y-%m-%d', days=7)}` |
+| `generate_identifier(char_len)` | 生成标识符 | `${generate_identifier(8)}` |
+
+**场景：使用 Faker 生成完整用户注册信息**
+
+```yaml
+case_common:
+  allure_epic: 注册模块
+  allure_feature: 用户注册
+  allure_story: Faker数据驱动
+  case_markers: ['register', 'faker', 'p1']
+
+case_info:
+  - id: faker_register_01
+    title: 使用Faker数据注册用户
+    url: /api/user/register
+    method: POST
+    headers:
+      Content-Type: application/json
+    request_type: json
+    payload:
+      # 使用Faker生成随机测试数据
+      username: "user_${generate_identifier(8)}"
+      password: "${generate_random_int(100000, 999999)}"
+      real_name: "${generate_name(lan='zh')}"
+      email: "${generate_email(lan='zh')}"
+      phone: "${generate_phone(lan='zh')}"
+      id_card: "${generate_id_number(lan='zh')}"
+      company: "${generate_company_name(lan='zh')}"
+      province: "${generate_province(lan='zh')}"
+      city: "${generate_city(lan='zh')}"
+      address: "${generate_address(lan='zh')}"
+      # 动态时间
+      register_time: "${generate_time('%Y-%m-%d %H:%M:%S')}"
+      expire_time: "${generate_time('%Y-%m-%d', days=365)}"
+    extract:
+      response:
+        type_jsonpath:
+          registered_user_id: $.data.user_id
+          registered_username: $.data.username
+    assert_response:
+      status_code: 200
+      assert_code:
+        type_jsonpath: "$.code"
+        expect_value: 0
+        assert_type: "=="
+      # 验证返回的用户名与提交的一致
+      assert_username:
+        type_jsonpath: "$.data.username"
+        expect_value: "${registered_username}"
+        assert_type: "=="
+```
+
+### 5. 多重依赖与依赖链
+
+支持多种依赖类型：接口依赖、环境变量依赖、数据库依赖。
+
+**场景：复杂依赖链（环境变量 → 接口 → 数据库）**
+
+```yaml
+case_common:
+  allure_epic: 综合测试
+  allure_feature: 依赖管理
+  allure_story: 多重依赖
+  case_markers: ['dependence', 'complex']
+
+case_info:
+  - id: complex_dependence_01
+    title: 多重依赖测试
+    url: /api/order/verify
+    method: POST
+    headers:
+      Authorization: Bearer ${token}
+      Content-Type: application/json
+    request_type: json
+    payload:
+      order_id: ${order_id}
+      verify_code: ${verify_code}
+      user_balance: ${user_balance}
+    case_dependence:
+      setup:
+        # 环境变量依赖：设置初始变量
+        variables:
+          verify_code: "${generate_random_int(1000, 9999)}"
+          request_time: "${generate_time('%Y-%m-%d %H:%M:%S')}"
+        # 接口依赖：先执行登录和创建订单
+        interface: [workflow_login_01, workflow_create_order_01]
+        # 数据库依赖：查询用户余额
+        database:
+          - sql: "SELECT balance FROM user_account WHERE user_id='${user_id}'"
+            type_jsonpath:
+              user_balance: $.0.balance
+    extract:
+      response:
+        type_jsonpath:
+          verify_result: $.data.result
+    assert_response:
+      status_code: 200
+      assert_result:
+        type_jsonpath: "$.data.result"
+        expect_value: "success"
+        assert_type: "=="
+```
+
+### 6. 正则表达式提取
+
+适用于从响应文本、Cookie值等非JSON结构中提取数据。
+
+**场景：从响应头或HTML内容中提取数据**
+
+```yaml
+case_common:
+  allure_epic: 认证模块
+  allure_feature: OAuth认证
+  allure_story: 正则提取
+  case_markers: ['regex', 'oauth']
+
+case_info:
+  - id: regex_extract_01
+    title: OAuth认证并提取授权码
+    url: /api/oauth/authorize
+    method: GET
+    headers:
+      Authorization: Bearer ${token}
+    request_type: params
+    payload:
+      client_id: ${client_id}
+      redirect_uri: ${redirect_uri}
+      response_type: code
+    extract:
+      response:
+        # JSONPath提取
+        type_jsonpath:
+          auth_state: $.data.state
+      # 正则表达式提取（从响应文本中）
+      type_re:
+        # 从重定向URL中提取授权码
+        auth_code: "code=(\w+)"
+        # 从响应中提取session_id
+        session_id: "session_id=([a-f0-9]+)"
+    assert_response:
+      status_code: 200
+
+  - id: regex_cookie_01
+    title: 从Cookie中提取Session ID
+    url: /api/user/session
+    method: POST
+    headers:
+      Content-Type: application/json
+    request_type: json
+    payload:
+      username: ${username}
+    extract:
+      response:
+        # 从Response对象提取Cookie
+        type_response:
+          cookies: response.cookies
+        # 正则提取Cookie中的session值
+        type_re:
+          session_token: "session=(\w+)"
+    assert_response:
+      status_code: 200
+```
+
+### 7. SSH 隧道数据库连接
+
+通过 SSH 隧道连接远程数据库，适用于生产环境或安全隔离环境。
+
+**配置示例（settings.py 或环境配置文件）：**
+
+```yaml
+# config/prod.yaml
+db_info:
+  db_host: 10.0.0.100  # 内网数据库IP
+  db_port: 3306
+  db_user: readonly
+  db_pwd: ${PROD_DB_PWD}
+  db_database: prod_db
+  # SSH隧道配置
+  ssh: true
+  ssh_config:
+    ssh_host: ssh.jumpserver.com  # SSH跳板机
+    ssh_port: 22
+    ssh_user: autotest
+    ssh_pwd: ${SSH_PWD}
+```
+
+**测试用例示例：**
+
+```yaml
+case_common:
+  allure_epic: 生产验证
+  allure_feature: 数据验证
+  allure_story: SSH隧道连接
+  case_markers: ['ssh', 'prod', 'critical']
+
+case_info:
+  - id: ssh_db_verify_01
+    title: 通过SSH隧道验证生产数据
+    url: /api/order/query
+    method: GET
+    headers:
+      Authorization: Bearer ${prod_token}
+    request_type: params
+    payload:
+      order_no: "ORD202401150001"
+    # 通过SSH隧道进行数据库断言
+    assert_sql:
+      - sql: "SELECT status, amount FROM orders WHERE order_no='ORD202401150001'"
+        expect_value:
+          status: "completed"
+          amount: 299.00
+        assert_type: "=="
+```
+
+### 8. Cookie/Session 管理
+
+框架自动管理 Session 会话，支持 Cookie 提取和传递。
+
+**场景：Cookie 自动传递与验证**
+
+```yaml
+case_common:
+  allure_epic: 会话管理
+  allure_feature: Cookie管理
+  allure_story: Session持久化
+  case_markers: ['cookie', 'session']
+
+case_info:
+  # 登录获取Cookie
+  - id: cookie_login_01
+    title: 登录并获取Cookie
+    url: /api/auth/login
+    method: POST
+    headers:
+      Content-Type: application/json
+    request_type: json
+    payload:
+      username: ${username}
+      password: ${password}
+    extract:
+      response:
+        # 提取整个Cookie对象
+        type_response:
+          login_cookies: response.cookies
+        # JSONPath提取token
+        type_jsonpath:
+          auth_token: $.data.token
+    assert_response:
+      status_code: 200
+
+  # 使用Cookie访问需要认证的接口
+  - id: cookie_access_01
+    title: 使用Cookie访问用户信息
+    url: /api/user/profile
+    method: GET
+    headers:
+      Authorization: Bearer ${auth_token}
+    # 传递上一接口的Cookie
+    cookies: ${login_cookies}
+    case_dependence:
+      setup:
+        interface: cookie_login_01
+    extract:
+      response:
+        type_jsonpath:
+          user_profile_id: $.data.profile_id
+    assert_response:
+      status_code: 200
+      assert_username:
+        type_jsonpath: "$.data.username"
+        expect_value: "${username}"
+        assert_type: "=="
+```
+
+### 9. 条件执行与等待策略
+
+支持请求前等待、条件断言等策略。
+
+**场景：轮询等待异步任务完成**
+
+```yaml
+case_common:
+  allure_epic: 异步任务
+  allure_feature: 任务管理
+  allure_story: 轮询等待
+  case_markers: ['async', 'polling']
+
+case_info:
+  - id: async_task_create_01
+    title: 创建异步任务
+    url: /api/task/create
+    method: POST
+    headers:
+      Authorization: Bearer ${token}
+    request_type: json
+    payload:
+      task_type: data_export
+      params:
+        dataset_id: 100
+        format: csv
+    extract:
+      response:
+        type_jsonpath:
+          task_id: $.data.task_id
+    assert_response:
+      status_code: 200
+
+  - id: async_task_wait_01
+    title: 等待任务完成（请求前等待5秒）
+    url: /api/task/status
+    method: GET
+    headers:
+      Authorization: Bearer ${token}
+    request_type: params
+    payload:
+      task_id: ${task_id}
+    # 请求前等待时间（秒）
+    wait_seconds: 5
+    case_dependence:
+      setup:
+        interface: async_task_create_01
+    extract:
+      response:
+        type_jsonpath:
+          task_status: $.data.status
+          task_result_url: $.data.result_url
+    assert_response:
+      status_code: 200
+      # 任务状态为完成或处理中
+      assert_status:
+        type_jsonpath: "$.data.status"
+        expect_value: ["completed", "processing"]
+        assert_type: "contained_by"
+```
+
+**手动轮询等待示例：**
+
+```python
+# testcases/test_manual_case/test_async_polling.py
+import pytest
+import time
+from config.settings import GLOBAL_VARS
+from core.requests_utils.base_request import BaseRequest
+
+@pytest.mark.async
+def test_polling_task_completion():
+    """
+    轮询等待异步任务完成
+    """
+    task_id = GLOBAL_VARS.get("task_id")
+    token = GLOBAL_VARS.get("token")
+    host = GLOBAL_VARS.get("host")
+    
+    max_retries = 10
+    retry_interval = 3  # 秒
+    
+    for i in range(max_retries):
+        req_data = {
+            "url": f"{host}/api/task/status",
+            "method": "GET",
+            "headers": {"Authorization": f"Bearer {token}"},
+            "request_type": "params",
+            "payload": {"task_id": task_id}
+        }
+        
+        response = BaseRequest.send_request(req_data)
+        status = response.json().get("data", {}).get("status")
+        
+        if status == "completed":
+            # 任务完成，获取结果
+            result_url = response.json().get("data", {}).get("result_url")
+            assert result_url is not None
+            GLOBAL_VARS["task_result_url"] = result_url
+            return
+        
+        elif status == "failed":
+            pytest.fail(f"Task {task_id} failed")
+        
+        # 筃待后继续轮询
+        time.sleep(retry_interval)
+    
+    pytest.fail(f"Task {task_id} did not complete within {max_retries * retry_interval} seconds")
+```
+
+### 10. 批量数据验证
+
+验证列表数据的批量断言，如分页数据、列表查询结果。
+
+**场景：验证分页数据结构**
+
+```yaml
+case_common:
+  allure_epic: 数据查询
+  allure_feature: 列表接口
+  allure_story: 批量验证
+  case_markers: ['list', 'pagination']
+
+case_info:
+  - id: batch_list_01
+    title: 获取用户列表并验证
+    url: /api/user/list
+    method: GET
+    headers:
+      Authorization: Bearer ${token}
+    request_type: params
+    payload:
+      page: 1
+      page_size: 20
+      department: 研发部
+    case_dependence:
+      setup:
+        interface: workflow_login_01
+    extract:
+      response:
+        type_jsonpath:
+          # 提取整个用户列表
+          user_list: $.data.list
+          total_count: $.data.total
+          current_page: $.data.page
+    assert_response:
+      status_code: 200
+      # 验证分页信息
+      assert_page:
+        type_jsonpath: "$.data.page"
+        expect_value: 1
+        assert_type: "=="
+      assert_page_size:
+        type_jsonpath: "$.data.page_size"
+        expect_value: 20
+        assert_type: "=="
+      # 验证列表长度不超过page_size
+      assert_list_length:
+        type_jsonpath: "$.data.list"
+        expect_value: 20
+        assert_type: "len_le"  # 长度小于等于
+      # 验证total大于0
+      assert_total:
+        type_jsonpath: "$.data.total"
+        expect_value: 0
+        assert_type: "gt"  # 大于
+```
+
+**复杂断言示例：**
+
+```yaml
+  - id: batch_verify_each_01
+    title: 验证每个用户数据结构
+    url: /api/user/list
+    method: GET
+    headers:
+      Authorization: Bearer ${token}
+    request_type: params
+    payload:
+      page: 1
+      page_size: 10
+    assert_response:
+      status_code: 200
+      # 验证第一个用户包含必要字段
+      assert_first_user_id:
+        type_jsonpath: "$.data.list[0].user_id"
+        expect_value: null
+        assert_type: "!="
+      assert_first_user_name:
+        type_jsonpath: "$.data.list[0].username"
+        expect_value: null
+        assert_type: "!="
+        message: "第一个用户的username不能为空"
+      # 验证列表中包含特定用户
+      assert_contains_admin:
+        type_jsonpath: "$.data.list[*].username"
+        expect_value: "admin"
+        assert_type: "contains"
+```
+
+### 11. 复合断言组合
+
+多种断言类型组合使用，实现精细化验证。
+
+**支持的断言类型：**
+
+| 断言类型 | 说明 | 使用场景 |
+|---------|------|---------|
+| `==` | 相等断言 | 值精确匹配 |
+| `!=` / `not_eq` | 不相等断言 | 值不匹配 |
+| `gt` | 大于断言 | 数值比较 |
+| `ge` | 大于等于断言 | 数值比较 |
+| `lt` | 小于断言 | 数值比较 |
+| `le` | 小于等于断言 | 数值比较 |
+| `contains` | 包含断言 | 列表/字符串包含元素 |
+| `contained_by` | 被包含断言 | 元素在列表中存在 |
+| `startswith` | 开头匹配断言 | 字符串前缀验证 |
+| `endswith` | 结尾匹配断言 | 字符串后缀验证 |
+| `len_eq` | 长度相等断言 | 列表长度验证 |
+| `len_gt` | 长度大于断言 | 列表长度验证 |
+| `len_le` | 长度小于等于断言 | 列表长度验证 |
+| `str_eq` | 字符串相等断言 | 字符串匹配 |
+
+**组合断言示例：**
+
+```yaml
+case_info:
+  - id: combined_assert_01
+    title: 组合断言验证
+    url: /api/product/detail
+    method: GET
+    request_type: params
+    payload:
+      product_id: 10001
+    assert_response:
+      status_code: 200
+      # 数值范围验证
+      assert_price:
+        type_jsonpath: "$.data.price"
+        expect_value: 0
+        assert_type: "gt"  # 价格大于0
+        message: "商品价格必须大于0"
+      assert_stock:
+        type_jsonpath: "$.data.stock"
+        expect_value: 10
+        assert_type: "ge"  # 库存大于等于10
+      # 字符串验证
+      assert_name:
+        type_jsonpath: "$.data.name"
+        expect_value: ""
+        assert_type: "!="
+        message: "商品名称不能为空"
+      assert_code:
+        type_jsonpath: "$.data.product_code"
+        expect_value: "PRD"
+        assert_type: "startswith"  # 商品编码以PRD开头
+      # 列表验证
+      assert_categories:
+        type_jsonpath: "$.data.categories"
+        expect_value: 1
+        assert_type: "len_gt"  # 分类数量大于1
+      assert_has_tag:
+        type_jsonpath: "$.data.tags"
+        expect_value: "热销"
+        assert_type: "contains"  # 标签包含"热销"
+```
+
+### 12. Python 表达式动态计算
+
+支持在参数中使用 Python 表达式进行动态计算。
+
+**场景：动态计算订单金额**
+
+```yaml
+case_info:
+  - id: expr_calc_01
+    title: 使用表达式计算金额
+    url: /api/order/create
+    method: POST
+    request_type: json
+    payload:
+      # 直接使用Python表达式
+      unit_price: 99.00
+      quantity: 3
+      # 表达式计算总价
+      total_price: "${99.00 * 3}"
+      # 表达式计算折扣后价格
+      discounted_price: "${99.00 * 3 * 0.9}"
+      # 使用变量进行计算
+      final_amount: "${total_price - discounted_price}"
+      # 时间戳计算
+      order_timestamp: "${int(time.time())}"
+      # 随机选择
+      payment_method: "${random.choice(['alipay', 'wechat', 'credit_card'])}"
+    assert_response:
+      status_code: 200
+      assert_total:
+        type_jsonpath: "$.data.total_price"
+        expect_value: 297.00
+        assert_type: "=="
+      assert_discount:
+        type_jsonpath: "$.data.discounted_price"
+        expect_value: 267.3
+        assert_type: "=="
+```
+
+### 13. 自定义函数调用
+
+在测试用例中调用自定义工具函数。
+
+```yaml
+case_info:
+  - id: custom_func_01
+    title: 调用自定义函数
+    url: /api/data/process
+    method: POST
+    request_type: json
+    payload:
+      # 调用 data_tools.py 中的函数
+      file_list: "${list_to_str(target=['file1', 'file2', 'file3'])}"
+      # Base64编码
+      encoded_content: "${get_base64_content('test content')}"
+      # AES加密（需配置密钥）
+      encrypted_pwd: "${aes_encrypt_data(target_str='password123', ace_key='secret_key')}"
+      # 数据切割
+      split_result: "${split_data(target='a,b,c,d', split_char=',', start_index=0, end_index=2)}"
+    assert_response:
+      status_code: 200
+```
+
+### 最佳实践总结
+
+1. **用例依赖顺序**：`variables` → `interface` → `database`，按此顺序处理依赖
+2. **数据清理时机**：在 `assert_sql` 中验证数据后，及时注册清理任务
+3. **Faker 数据唯一性**：使用时间戳或随机数确保测试数据唯一性
+4. **断言信息完整**：为每个断言添加 `message` 描述，便于失败定位
+5. **等待策略**：异步任务使用轮询 + 超时机制，避免无限等待
+6. **Session 管理**：复杂认证流程建议手动编写 Python 测试用例
+7. **SSH 安全**：SSH 隧道密码通过 `.env` 管理，不要硬编码
+8. **表达式谨慎**：Python 表达式只在受信任的测试代码中使用
