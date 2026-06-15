@@ -16,16 +16,6 @@ from utils.tools.exception_handler import handle_exception
 from utils.tools.mock_service import get_mock_service, MockMode
 
 
-def is_xdist_master(config):
-    """
-    判断是否是 xdist 主进程
-    :param config: pytest config 对象
-    :return: True 表示是主进程
-    """
-    has_xdist = hasattr(config, "workerinput")
-    return not has_xdist
-
-
 # ------------------------------------- START: pytest钩子函数处理---------------------------------------#
 def pytest_addoption(parser):
     """
@@ -44,28 +34,22 @@ def pytest_configure(config):
     3. 初始化数据清理管理器
     4. 初始化 Mock 服务
     """
-    # 判断是否是主进程
-    is_master = is_xdist_master(config)
-    
     # 加载环境配置
     env = config.getoption("--env")
     if env:
         env_path = os.path.join(ENV_DIR, f"{env}.yml")
         if not os.path.exists(env_path):
             env_path = os.path.join(ENV_DIR, f"{env}.yaml")
-        
+
         if os.path.exists(env_path):
-            if is_master:
-                logger.info(f"Loading environment config from: {env_path}")
+            logger.info(f"Loading environment config from: {env_path}")
             __env = load_yaml_file(env_path)
             GLOBAL_VARS.update(__env)
         else:
-            if is_master:
-                logger.warning(f"Environment config file not found: {env}")
+            logger.warning(f"Environment config file not found: {env}")
 
     # 注册自定义标记
-    if is_master:
-        logger.debug(f"需要注册的标记：{CUSTOM_MARKERS}")
+    logger.debug(f"需要注册的标记：{CUSTOM_MARKERS}")
     # 对标记进行去重处理
     unique_markers = []
     for item in CUSTOM_MARKERS:
@@ -80,26 +64,24 @@ def pytest_configure(config):
                 config.addinivalue_line('markers', f'{k}:{v}')
 
     # 初始化数据清理管理器
-    _init_cleanup_manager(is_master)
-    
+    _init_cleanup_manager()
+
     # 初始化 Mock 服务
-    _init_mock_service(config, is_master)
+    _init_mock_service(config)
 
 
-def _init_cleanup_manager(is_master=True):
+def _init_cleanup_manager():
     """
     初始化数据清理管理器
     根据配置注册数据库连接
-    :param is_master: 是否是主进程
     """
     if not DATA_CLEANUP_CONFIG.get("enabled", False):
-        if is_master:
-            logger.debug("数据清理功能未启用")
+        logger.debug("数据清理功能未启用")
         return
-    
+
     cleanup_manager = get_cleanup_manager()
     db_configs = DATA_CLEANUP_CONFIG.get("databases", {})
-    
+
     for db_name, db_config in db_configs.items():
         try:
             cleanup_manager.register_db(db_name, db_config)
@@ -107,21 +89,19 @@ def _init_cleanup_manager(is_master=True):
             logger.error(f"数据库连接注册失败: {db_name}, 错误: {e}")
 
 
-def _init_mock_service(config, is_master=True):
+def _init_mock_service(config):
     """
     初始化 Mock 服务
     根据命令行参数或配置设置 Mock 模式
     :param config: pytest config 对象
-    :param is_master: 是否是主进程
     """
     mock_mode_str = config.getoption("--mock")
-    
+
     if mock_mode_str is None:
         mock_mode_str = MOCK_CONFIG.get("mode", "disabled")
-    
+
     if mock_mode_str == "disabled":
-        if is_master:
-            logger.debug("Mock 服务未启用")
+        logger.debug("Mock 服务未启用")
         return
     
     try:
@@ -206,10 +186,6 @@ def pytest_sessionfinish(session, exitstatus):
     执行所有注册的清理任务
     保存 Mock 记录
     """
-    # 只在主进程执行
-    if not is_xdist_master(session.config):
-        return
-    
     cleanup_mode = session.config.getoption("--cleanup")
     
     if cleanup_mode == "skip":
@@ -395,10 +371,6 @@ def pytest_terminal_summary(terminalreporter, config):
     """
     收集测试结果
     """
-    # 只在主进程执行
-    if not is_xdist_master(config):
-        return
-
     _RERUN = len([i for i in terminalreporter.stats.get('rerun', []) if i.when != 'teardown'])
     try:
         # 获取pytest传参--reruns的值
