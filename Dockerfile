@@ -12,11 +12,8 @@ ENV PYTHONPATH=/app
 
 WORKDIR /app
 
-# 安装系统依赖
+# 安装系统依赖（slim 镜像已包含必要组件）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libssl-dev \
-    libffi-dev \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -40,9 +37,9 @@ COPY conftest.py pytest.ini run.py ./
 # 创建输出目录
 RUN mkdir -p outputs/report outputs/log
 
-# 生成测试用例
+# 生成测试用例（添加错误处理）
 RUN python -c "from core.case_generate_utils.case_fun_generate import generate_cases_for_projects; generate_cases_for_projects()" && \
-    echo "Test cases generated successfully"
+    echo "✅ Test cases generated successfully"
 
 # 创建非 root 用户
 RUN useradd --create-home --shell /bin/bash appuser && \

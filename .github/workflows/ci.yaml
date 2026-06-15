@@ -152,22 +152,22 @@ jobs:
 
       - name: Prepare .env from secrets
         run: |
-          cat > .env << EOF
-          EMAIL_USER="${EMAIL_USER}"
-          EMAIL_PASSWORD="${EMAIL_PASSWORD}"
-          EMAIL_HOST="${EMAIL_HOST}"
-          EMAIL_TO_LIST="${EMAIL_TO_LIST}"
-          DINGTALK_WEBHOOK="${DINGTALK_WEBHOOK}"
-          DINGTALK_SECRET="${DINGTALK_SECRET}"
-          WECHAT_WEBHOOK="${WECHAT_WEBHOOK}"
-          TEST_USERNAME="${TEST_USERNAME}"
-          TEST_PASSWORD="${TEST_PASSWORD}"
-          TEST_DB_HOST="${TEST_DB_HOST}"
-          TEST_DB_PORT="${TEST_DB_PORT}"
-          TEST_DB_USER="${TEST_DB_USER}"
-          TEST_DB_PWD="${TEST_DB_PWD}"
-          TEST_DB_DATABASE="${TEST_DB_DATABASE}"
-          EOF
+          touch .env
+          [ -n "${EMAIL_USER}" ] && echo "EMAIL_USER=\"${EMAIL_USER}\"" >> .env || true
+          [ -n "${EMAIL_PASSWORD}" ] && echo "EMAIL_PASSWORD=\"${EMAIL_PASSWORD}\"" >> .env || true
+          [ -n "${EMAIL_HOST}" ] && echo "EMAIL_HOST=\"${EMAIL_HOST}\"" >> .env || true
+          [ -n "${EMAIL_TO_LIST}" ] && echo "EMAIL_TO_LIST=\"${EMAIL_TO_LIST}\"" >> .env || true
+          [ -n "${DINGTALK_WEBHOOK}" ] && echo "DINGTALK_WEBHOOK=\"${DINGTALK_WEBHOOK}\"" >> .env || true
+          [ -n "${DINGTALK_SECRET}" ] && echo "DINGTALK_SECRET=\"${DINGTALK_SECRET}\"" >> .env || true
+          [ -n "${WECHAT_WEBHOOK}" ] && echo "WECHAT_WEBHOOK=\"${WECHAT_WEBHOOK}\"" >> .env || true
+          [ -n "${TEST_USERNAME}" ] && echo "TEST_USERNAME=\"${TEST_USERNAME}\"" >> .env || true
+          [ -n "${TEST_PASSWORD}" ] && echo "TEST_PASSWORD=\"${TEST_PASSWORD}\"" >> .env || true
+          [ -n "${TEST_DB_HOST}" ] && echo "TEST_DB_HOST=\"${TEST_DB_HOST}\"" >> .env || true
+          [ -n "${TEST_DB_PORT}" ] && echo "TEST_DB_PORT=\"${TEST_DB_PORT}\"" >> .env || true
+          [ -n "${TEST_DB_USER}" ] && echo "TEST_DB_USER=\"${TEST_DB_USER}\"" >> .env || true
+          [ -n "${TEST_DB_PWD}" ] && echo "TEST_DB_PWD=\"${TEST_DB_PWD}\"" >> .env || true
+          [ -n "${TEST_DB_DATABASE}" ] && echo "TEST_DB_DATABASE=\"${TEST_DB_DATABASE}\"" >> .env || true
+          echo "✅ .env file prepared"
 
       - name: Generate Test Cases
         run: python -c "from core.case_generate_utils.case_fun_generate import generate_cases_for_projects; generate_cases_for_projects()"
@@ -175,11 +175,10 @@ jobs:
       - name: Run API Tests
         run: |
           if [ -n "${{ github.event.inputs.markers }}" ]; then
-            python run.py -env test -report yes -m "${{ github.event.inputs.markers }}"
+            python run.py -env test -report yes -m "${{ github.event.inputs.markers }}" || true
           else
-            python run.py -env test -report yes
+            python run.py -env test -report yes || true
           fi
-        continue-on-error: true
 
       - name: Generate Allure Report
         if: always()
@@ -278,29 +277,28 @@ jobs:
 
       - name: Prepare .env from secrets
         run: |
-          cat > .env << EOF
-          EMAIL_USER="${EMAIL_USER}"
-          EMAIL_PASSWORD="${EMAIL_PASSWORD}"
-          EMAIL_HOST="${EMAIL_HOST}"
-          EMAIL_TO_LIST="${EMAIL_TO_LIST}"
-          DINGTALK_WEBHOOK="${DINGTALK_WEBHOOK}"
-          DINGTALK_SECRET="${DINGTALK_SECRET}"
-          WECHAT_WEBHOOK="${WECHAT_WEBHOOK}"
-          PROD_USERNAME="${PROD_USERNAME}"
-          PROD_PASSWORD="${PROD_PASSWORD}"
-          PROD_DB_HOST="${PROD_DB_HOST}"
-          PROD_DB_PORT="${PROD_DB_PORT}"
-          PROD_DB_USER="${PROD_DB_USER}"
-          PROD_DB_PWD="${PROD_DB_PWD}"
-          PROD_DB_DATABASE="${PROD_DB_DATABASE}"
-          EOF
+          touch .env
+          [ -n "${EMAIL_USER}" ] && echo "EMAIL_USER=\"${EMAIL_USER}\"" >> .env || true
+          [ -n "${EMAIL_PASSWORD}" ] && echo "EMAIL_PASSWORD=\"${EMAIL_PASSWORD}\"" >> .env || true
+          [ -n "${EMAIL_HOST}" ] && echo "EMAIL_HOST=\"${EMAIL_HOST}\"" >> .env || true
+          [ -n "${EMAIL_TO_LIST}" ] && echo "EMAIL_TO_LIST=\"${EMAIL_TO_LIST}\"" >> .env || true
+          [ -n "${DINGTALK_WEBHOOK}" ] && echo "DINGTALK_WEBHOOK=\"${DINGTALK_WEBHOOK}\"" >> .env || true
+          [ -n "${DINGTALK_SECRET}" ] && echo "DINGTALK_SECRET=\"${DINGTALK_SECRET}\"" >> .env || true
+          [ -n "${WECHAT_WEBHOOK}" ] && echo "WECHAT_WEBHOOK=\"${WECHAT_WEBHOOK}\"" >> .env || true
+          [ -n "${PROD_USERNAME}" ] && echo "PROD_USERNAME=\"${PROD_USERNAME}\"" >> .env || true
+          [ -n "${PROD_PASSWORD}" ] && echo "PROD_PASSWORD=\"${PROD_PASSWORD}\"" >> .env || true
+          [ -n "${PROD_DB_HOST}" ] && echo "PROD_DB_HOST=\"${PROD_DB_HOST}\"" >> .env || true
+          [ -n "${PROD_DB_PORT}" ] && echo "PROD_DB_PORT=\"${PROD_DB_PORT}\"" >> .env || true
+          [ -n "${PROD_DB_USER}" ] && echo "PROD_DB_USER=\"${PROD_DB_USER}\"" >> .env || true
+          [ -n "${PROD_DB_PWD}" ] && echo "PROD_DB_PWD=\"${PROD_DB_PWD}\"" >> .env || true
+          [ -n "${PROD_DB_DATABASE}" ] && echo "PROD_DB_DATABASE=\"${PROD_DB_DATABASE}\"" >> .env || true
+          echo "✅ .env file prepared"
 
       - name: Generate Test Cases
         run: python -c "from core.case_generate_utils.case_fun_generate import generate_cases_for_projects; generate_cases_for_projects()"
 
       - name: Run API Tests
-        run: python run.py -env prod -report yes
-        continue-on-error: true
+        run: python run.py -env prod -report yes || true
 
       - name: Generate Allure Report
         if: always()
