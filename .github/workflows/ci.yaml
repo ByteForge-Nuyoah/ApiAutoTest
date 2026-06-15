@@ -340,7 +340,10 @@ jobs:
     needs: [test-env, prod-env]
     steps:
       - name: Delete old artifacts
-        uses: c-hive/gha-delete-artifacts@v1
+        uses: geekyeggo/delete-artifact@v5
         with:
+          name: |
+            test-report-*
+            prod-report-*
           age: '30 days'
           skip-recent: 5
