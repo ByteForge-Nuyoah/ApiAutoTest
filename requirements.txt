@@ -39,7 +39,7 @@ PyNaCl==1.6.2
 pytest==9.0.2
 pytest-repeat==0.9.4
 pytest-rerunfailures==16.1
-pytest-xdist==3.8.0
+# pytest-xdist 已移除（未启用并行执行）
 PyYAML==6.0.3
 requests==2.32.5
 requests-toolbelt==1.0.0
