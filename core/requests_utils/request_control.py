@@ -141,13 +141,14 @@ class RequestControl(BaseRequest):
 
         # 1. 变量替换：通过全局变量替换cookies中的 ${var}
         cookies = data_handle(obj=cookies, source=source)
-        
+
         # 2. 尝试解析JSON字符串为字典
         try:
             if isinstance(cookies, str):
                 cookies = json.loads(cookies)
-        except Exception:
-            pass # 解析失败则保持原样，后续检查类型
+        except json.JSONDecodeError as e:
+            logger.debug(f"Cookies JSON解析失败，保持原样: {e}")
+            # 解析失败则保持原样，后续检查类型
 
         # 3. 类型检查与返回
         if isinstance(cookies, (dict, http.cookiejar.CookieJar)):
@@ -451,7 +452,8 @@ class RequestControl(BaseRequest):
                         if isinstance(source_data, requests.Response):
                             try:
                                 data_to_extract = source_data.json()
-                            except:
+                            except json.JSONDecodeError as e:
+                                logger.warning(f"响应JSON解析失败，使用空字典: {e}")
                                 data_to_extract = {} # 解析失败
                         results[key] = json_extractor(data_to_extract, expr)
                 
