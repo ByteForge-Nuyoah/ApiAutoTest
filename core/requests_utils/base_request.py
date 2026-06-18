@@ -176,12 +176,17 @@ class BaseRequest:
         # 如果fields没有指定，则默认使用 "file" 作为字段名
         _fields = fields or "file"
 
+        # 使用 with 语句确保文件句柄正确关闭
+        with open(files, "rb") as f:
+            file_content = f.read()
+            file_name = os.path.basename(files)
+
         # 构建多部分表单数据的编码器，设置边界参数为当前时间戳
         encoder = MultipartEncoder(
             fields={
                 _fields: (
-                    os.path.basename(files),  # 使用文件的基名作为文件名
-                    open(files, "rb")  # 打开文件以二进制读取模式
+                    file_name,  # 使用文件的基名作为文件名
+                    file_content  # 文件内容
                 )
             },
             boundary='------------------------' + str(time.time())  # 生成唯一的边界标记
