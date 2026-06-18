@@ -9,82 +9,8 @@ from dotenv import load_dotenv
 # 加载环境变量，默认加载 .env 文件
 load_dotenv()
 
-# 导入全局变量管理器
-from utils.tools.global_vars import get_global_vars, GlobalVarsManager
-
-# 全局变量管理器实例（推荐使用）
-global_vars: GlobalVarsManager = get_global_vars()
-
-# 兼容旧代码：GLOBAL_VARS 字典（已废弃，建议迁移到 global_vars）
-# 注意：GLOBAL_VARS 现在是一个代理，实际数据存储在 GlobalVarsManager 中
-class _GlobalVarsProxy(dict):
-    """
-    GLOBAL_VARS 代理类
-    提供向后兼容，实际操作转发到 GlobalVarsManager
-    继承 dict 以便 isinstance() 和 Template.safe_substitute() 正常工作
-    """
-
-    def __init__(self):
-        # 不调用 super().__init__()，因为我们是代理
-        self._manager = get_global_vars()
-
-    def get(self, key, default=None):
-        return self._manager.get(key, default)
-
-    def __getitem__(self, key):
-        value = self._manager.get(key)
-        if value is None and key not in self._manager:
-            raise KeyError(key)
-        return value
-
-    def __setitem__(self, key, value):
-        self._manager.set(key, value)
-
-    def update(self, other=None, **kwargs):
-        if other:
-            self._manager.update(other)
-        if kwargs:
-            self._manager.update(kwargs)
-
-    def __contains__(self, key):
-        return key in self._manager
-
-    def keys(self):
-        return self._manager.get_all().keys()
-
-    def values(self):
-        return self._manager.get_all().values()
-
-    def items(self):
-        return self._manager.get_all().items()
-
-    def clear(self):
-        self._manager.clear_runtime()
-
-    def pop(self, key, *args):
-        value = self._manager.get(key)
-        if self._manager.delete(key):
-            return value
-        if args:
-            return args[0]
-        raise KeyError(key)
-
-    def copy(self):
-        """返回真实字典的副本，用于 Template.safe_substitute"""
-        return self._manager.get_all()
-
-    def __repr__(self):
-        return f"GLOBAL_VARS(proxy -> {self._manager})"
-
-    def __len__(self):
-        return len(self._manager.get_all())
-
-    # 支持 Template.safe_substitute 需要的方法
-    def __iter__(self):
-        return iter(self._manager.get_all())
-
-GLOBAL_VARS = _GlobalVarsProxy()
-
+# 定义一个全局变量，用于存储运行过程中相关数据
+GLOBAL_VARS = {}
 # 定义一个变量。存储自定义的标记markers
 CUSTOM_MARKERS = []
 REPORT = {
@@ -104,9 +30,9 @@ MAX_FAIL = "100"
 
 # ------------------------------------ 配置信息 ----------------------------------------------------#
 # 1 代表 yaml文件，2 代表 excel文件，3 代表同时支持yaml和excel，其他数值将不自动生成用例
-CASE_FILE_TYPE = 3
+CASE_FILE_TYPE = 1
 # 0表示默认不发送任何通知， 1 代表钉钉通知，2 代表企业微信通知， 3 代表邮件通知， 4 代表所有途径都发送通知
-SEND_RESULT_TYPE = 4
+SEND_RESULT_TYPE = 0
 # 指定日志收集级别
 LOG_LEVEL = "DEBUG"  # 可选值：TRACE DEBUG INFO SUCCESS WARNING ERROR  CRITICAL
 LOG_LEVEL_STD = "DEBUG"
@@ -184,7 +110,7 @@ email = {
 }
 
 # ------------------------------------ 邮件通知内容 ----------------------------------------------------#
-email_subject = f"Api 自动化测试报告"
+email_subject = f"UI自动化报告"
 email_content = """
            各位同事, 大家好:
            自动化用例于 <strong>${start_time} </strong> 开始运行，运行时长：<strong>${run_time} s</strong>， 目前已执行完成。
@@ -210,7 +136,7 @@ ding_talk = {
 }
 
 # ------------------------------------ 钉钉通知内容 ----------------------------------------------------#
-ding_talk_title = f"Api 自动化测试报告"
+ding_talk_title = f"UI自动化报告"
 ding_talk_content = """
            各位同事, 大家好:
            ### 自动化用例于 ${start_time} 开始运行，运行时长：${run_time} s， 目前已执行完成。
@@ -236,7 +162,7 @@ wechat = {
 # ------------------------------------ 企业微信通知内容 ----------------------------------------------------#
 wechat_content = """
            各位同事, 大家好:
-           ### Api 自动化用例于 ${start_time} 开始运行，运行时长：${run_time} s， 目前已执行完成。
+           ### 自动化用例于 ${start_time} 开始运行，运行时长：${run_time} s， 目前已执行完成。
            --------------------------------
            #### 测试人： ${tester}
            #### 所属部门： ${department}

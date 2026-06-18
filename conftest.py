@@ -9,7 +9,6 @@ import pytest
 from datetime import datetime
 from loguru import logger
 from config.settings import REPORT_DIR, CUSTOM_MARKERS, ENV_DIR, GLOBAL_VARS, DATA_CLEANUP_CONFIG, MOCK_CONFIG
-from config.settings import global_vars  # 新的全局变量管理器
 from utils.files_utils.files_handle import load_yaml_file
 from utils.database_utils.data_cleanup import get_cleanup_manager
 from utils.tools.failure_snapshot import get_snapshot_manager, capture_failure
@@ -26,7 +25,6 @@ def pytest_addoption(parser):
     parser.addoption("--cleanup", action="store", default="auto", help="cleanup mode: auto, manual, skip")
     parser.addoption("--snapshot", action="store", default="on", help="failure snapshot: on, off")
     parser.addoption("--mock", action="store", default=None, help="mock mode: disabled, stub, record, replay, mixed")
-    parser.addoption("--isolate", action="store", default="on", help="test isolation: on, off")
 
 
 def pytest_configure(config):
@@ -46,9 +44,6 @@ def pytest_configure(config):
         if os.path.exists(env_path):
             logger.info(f"Loading environment config from: {env_path}")
             __env = load_yaml_file(env_path)
-            # 使用新的全局变量管理器初始化配置数据
-            global_vars.init_config(__env)
-            # 兼容旧代码
             GLOBAL_VARS.update(__env)
         else:
             logger.warning(f"Environment config file not found: {env}")
@@ -234,54 +229,6 @@ def mock_service():
     :return: MockService 实例
     """
     return get_mock_service()
-
-
-@pytest.fixture(scope="function")
-def isolated_globals(request):
-    """
-    隔离的全局变量 fixture
-    在测试开始前保存快照，测试结束后恢复
-    防止测试间相互污染
-
-    注意：默认不启用自动隔离，因为测试用例之间存在依赖关系（如token）
-    如需隔离，请在测试函数中显式使用此 fixture
-
-    使用方法：
-    def test_something(isolated_globals):
-        # isolated_globals 是 GlobalVarsManager 实例
-        isolated_globals.set("key", "value")
-        # 测试结束后自动恢复
-    """
-    # 保存快照
-    snapshot_id = global_vars.save_snapshot()
-    logger.trace(f"测试开始，保存全局变量快照 #{snapshot_id}")
-
-    yield global_vars
-
-    # 恢复快照
-    global_vars.restore_snapshot(snapshot_id)
-    logger.trace(f"测试结束，恢复全局变量快照 #{snapshot_id}")
-
-
-@pytest.fixture(scope="function")
-def clean_runtime_globals():
-    """
-    清理运行时全局变量的 fixture
-    用于需要干净环境的独立测试
-
-    使用方法：
-    def test_independent(clean_runtime_globals):
-        # 运行时变量已清空
-        ...
-    """
-    # 清空运行时数据
-    global_vars.clear_runtime()
-    logger.debug("已清空运行时全局变量")
-
-    yield global_vars
-
-    # 测试结束后再次清空
-    global_vars.clear_runtime()
 
 
 @pytest.fixture(scope="function")
