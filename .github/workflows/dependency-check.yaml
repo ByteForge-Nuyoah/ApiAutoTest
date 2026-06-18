@@ -1,0 +1,98 @@
+name: Dependency Security Check
+
+on:
+  schedule:
+    # 每周一早上 8 点执行
+    - cron: '0 0 * * 1'
+  push:
+    paths:
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+  workflow_dispatch:
+
+jobs:
+  check-dependencies:
+    name: Check Dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety pip-audit pipdeptree
+
+      - name: Check for known vulnerabilities
+        run: |
+          echo "🔍 Checking for known vulnerabilities..."
+          safety check -r requirements.txt --full-report --output json > safety-report.json || true
+
+          if [ -s safety-report.json ]; then
+            echo "⚠️ Vulnerabilities found:"
+            cat safety-report.json
+          else
+            echo "✅ No known vulnerabilities found"
+          fi
+
+      - name: Audit dependencies
+        run: |
+          echo "🔍 Auditing dependencies..."
+          pip-audit -r requirements.txt --format json > audit-report.json || true
+
+          if grep -q '"vulnerabilities"' audit-report.json; then
+            echo "⚠️ Audit found issues"
+            cat audit-report.json
+          else
+            echo "✅ No audit issues found"
+          fi
+
+      - name: Check for outdated packages
+        run: |
+          echo "📊 Checking for outdated packages..."
+          pip list --outdated --format=columns || true
+
+      - name: Check dependency conflicts
+        run: |
+          echo "🔧 Checking dependency conflicts..."
+          pip check
+
+      - name: Analyze dependency tree
+        run: |
+          echo "🌳 Analyzing dependency tree..."
+          pipdeptree --warn-silence > dependency-tree.txt || true
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-reports
+          path: |
+            safety-report.json
+            audit-report.json
+            dependency-tree.txt
+          retention-days: 30
+
+      - name: Create issue on vulnerabilities
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('safety-report.json')) {
+              const report = fs.readFileSync('safety-report.json', 'utf8');
+              github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🚨 Security: Vulnerable dependencies detected',
+                body: `## Vulnerable Dependencies\n\n\`\`\`json\n${report}\n\`\`\`\n\n**Action required:** Update dependencies to fix vulnerabilities.`,
+                labels: ['security', 'dependencies']
+              });
+            }
