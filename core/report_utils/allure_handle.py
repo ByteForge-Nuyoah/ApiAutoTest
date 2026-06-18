@@ -104,10 +104,11 @@ class AllureReportBeautiful:
             self.allure_html_path = allure_html_path
             self.allure_results_path = allure_results_path
         else:
-            print(f"allure results以及allure html报告未生成~ \n"
-                  f"allure报告生成依赖java环境，请检查运行环境是否正确安装JDK环境\n"
-                  f"allure_results_path={allure_results_path}， allure_html_path={allure_html_path}\n")
-            raise "allure results以及allure html报告未生成~！\nallure报告生成依赖java环境，请检查运行环境是否正确安装JDK环境\nallure_results_path={allure_results_path}， allure_html_path={allure_html_path}\n"
+            err_msg = (f"allure results以及allure html报告未生成~！\n"
+                       f"allure报告生成依赖java环境，请检查运行环境是否正确安装JDK环境\n"
+                       f"allure_results_path={allure_results_path}， allure_html_path={allure_html_path}\n")
+            print(err_msg)
+            raise FileNotFoundError(err_msg)
 
     # 设置报告窗口的标题
     def set_windows_title(self, new_title):
