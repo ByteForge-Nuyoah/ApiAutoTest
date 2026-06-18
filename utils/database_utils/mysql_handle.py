@@ -31,6 +31,8 @@ class MysqlServer:
                      f"kwargs: {kwargs}\n" \
                      "=====================================================")
         self.server = None
+        self.conn = None
+        self.cursor = None
         try:
             if ssh:
                 self.server = SSHTunnelForwarder(
@@ -56,21 +58,43 @@ class MysqlServer:
             self.cursor = self.conn.cursor()
         except Exception as e:
             logger.error(f"数据库连接失败：{e}")
+            # 清理已创建的资源
+            self.close()
+            raise ConnectionError(f"数据库连接失败: {e}") from e
+
+    def close(self):
+        """
+        显式关闭数据库连接
+        释放游标、连接和SSH隧道资源
+        """
+        errors = []
+        # 关闭游标
+        if self.cursor:
+            try:
+                self.cursor.close()
+            except Exception as e:
+                errors.append(f"关闭游标失败: {e}")
+        # 关闭数据库连接
+        if self.conn:
+            try:
+                self.conn.close()
+            except Exception as e:
+                errors.append(f"关闭数据库连接失败: {e}")
+        # 关闭SSH隧道
+        if self.server:
+            try:
+                self.server.close()
+            except Exception as e:
+                errors.append(f"关闭SSH隧道失败: {e}")
+
+        if errors:
+            logger.warning(f"关闭数据库资源时发生警告: {'; '.join(errors)}")
 
     def __del__(self):
         """
         在对象销毁前，断开游标，关闭数据库连接
         """
-        try:
-            # 关闭游标
-            self.cursor.close()
-            # 关闭数据库链接
-            self.conn.close()
-            # 如果开启了SSH隧道，则关闭
-            if self.server:
-                self.server.close()
-        except AttributeError as error:
-            logger.error("数据库连接失败，失败原因 %s", error)
+        self.close()
 
     def _sanitize_identifier(self, identifier: str) -> str:
         """
