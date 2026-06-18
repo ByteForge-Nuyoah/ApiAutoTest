@@ -5,6 +5,7 @@
 
 import os
 import re
+import json
 from loguru import logger
 from string import Template
 from datetime import datetime
@@ -26,10 +27,40 @@ from core.case_generate_utils.case_data_analysis import CaseDataCheck, CaseCheck
 """
 
 CASE_TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "case_template.txt")
+EXCEL_TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "excel_template.txt")
 CONFTEST_TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "conftest_template.txt")
 
 
 import json
+
+def save_excel_cache(excel_file: str, yaml_data: dict, cache_dir: str) -> str:
+    """
+    将Excel用例数据保存为JSON缓存文件，供动态加载使用
+
+    Args:
+        excel_file: Excel源文件路径
+        yaml_data: 从Excel解析出的用例数据
+        cache_dir: 缓存文件目录
+
+    Returns:
+        str: 缓存文件路径
+    """
+    # 确保缓存目录存在
+    os.makedirs(cache_dir, exist_ok=True)
+
+    # 生成缓存文件名（基于Excel文件名）
+    excel_basename = os.path.splitext(os.path.basename(excel_file))[0]
+    if excel_basename.startswith("test_"):
+        excel_basename = excel_basename[5:]
+    cache_filename = f"{excel_basename}_cache.json"
+    cache_path = os.path.join(cache_dir, cache_filename)
+
+    # 保存为JSON格式（保留结构，便于动态加载）
+    with open(cache_path, 'w', encoding='utf-8') as f:
+        json.dump(yaml_data, f, ensure_ascii=False, indent=2)
+
+    logger.trace(f"Excel用例缓存文件已生成: {cache_path}")
+    return cache_path
 
 def try_parse_json(value):
     """尝试将字符串解析为JSON对象"""
@@ -203,9 +234,23 @@ def __load_case_file(file, project_name: str = None):
         
         # 判断文件是否在根目录（INTERFACE_DIR）下
         is_in_root = os.path.samefile(INTERFACE_DIR, file_dir)
-        
+
+        # 判断是否是Excel文件
+        is_excel = file.endswith(('.xlsx', '.xls'))
+
+        # 如果是Excel文件，生成缓存文件供动态加载
+        source_file_path = file
+        template_path = CASE_TEMPLATE_DIR
+        if is_excel:
+            # Excel缓存目录
+            cache_dir = os.path.join(base_target_dir, ".excel_cache")
+            # 生成缓存文件
+            cache_file_path = save_excel_cache(file, yaml_data, cache_dir)
+            source_file_path = cache_file_path  # Excel用例使用缓存文件路径
+            template_path = EXCEL_TEMPLATE_DIR  # Excel用例使用专用模板
+
         if is_in_root and not project_name:
-            
+
             # 情况1：根目录下的初始化文件
             if os.path.basename(file) == "init_data.yaml" or os.path.basename(file) == "init_data.yml":
                 """识别到init_data.yaml或者init_data.yml文件，自动生成conftest.py文件"""
@@ -218,27 +263,28 @@ def __load_case_file(file, project_name: str = None):
                     init_data=yaml_data,
                     target_path=base_target_dir
                 )
-                
+
             # 情况2：根目录下的测试用例文件（以 test 开头）
             elif os.path.basename(file).startswith("test"):
                 try:
                     # 检查用例数据是否符合规范（字段检查等）
                     tested_case = CaseDataCheck().case_process(yaml_data)
-                    
+
                     # 生成新的文件名：test_excel_<目录名>
                     # 如果是Excel文件，使用excel作为前缀；如果是YAML文件，使用yaml作为前缀
-                    file_prefix = "excel" if file.endswith(('.xlsx', '.xls')) else "yaml"
+                    file_prefix = "excel" if is_excel else "yaml"
                     new_filename = f"test_{file_prefix}_root"
-                    
+
                     # 调用核心生成函数
                     gen_case_file(
                         # 此时用例文件的直接父级目录是INTERFACE_DIR，则直接在AUTO_CASE_DIR下生成测试用例方法
                         filename=new_filename,
-                        case_template_path=CASE_TEMPLATE_DIR,
+                        case_template_path=template_path,
                         case_info=yaml_data.get("case_common", yaml_data.get("case_info")),
                         common_dependence=yaml_data.get("common_dependence", None),
                         case_data=tested_case,
-                        target_case_path=base_target_dir
+                        target_case_path=base_target_dir,
+                        source_file_path=source_file_path  # 传入源文件/缓存文件路径
                     )
                 except CaseCheckException as e:
                     logger.error(f"用例检查失败：{str(e)}")
@@ -273,10 +319,10 @@ def __load_case_file(file, project_name: str = None):
                 # 检查用例数据是否符合规范
                 tested_case = CaseDataCheck().case_process(yaml_data)
                 os.makedirs(os.path.dirname(file), exist_ok=True)
-                
+
                 # 生成新的文件名：test_excel_<文件名>
                 # 如果是Excel文件，使用excel作为前缀；如果是YAML文件，使用yaml作为前缀
-                file_prefix = "excel" if file.endswith(('.xlsx', '.xls')) else "yaml"
+                file_prefix = "excel" if is_excel else "yaml"
                 # 获取Excel文件名（去掉test_前缀和扩展名）
                 file_basename = os.path.splitext(os.path.basename(file))[0]
                 # 去掉test_前缀
@@ -284,15 +330,16 @@ def __load_case_file(file, project_name: str = None):
                     file_basename = file_basename[5:]
                 # 组合文件名
                 new_filename = f"test_{file_prefix}_{file_basename}"
-                
+
                 gen_case_file(
                     filename=new_filename,
-                    case_template_path=CASE_TEMPLATE_DIR,
+                    case_template_path=template_path,
                     case_info=yaml_data.get("case_common", yaml_data.get("case_info")),
                     common_dependence=yaml_data.get("common_dependence", None),
                     case_data=tested_case,
                     target_case_path=os.path.join(base_target_dir,
-                                                  get_relative_path(file_path=file, directory_path=reference_dir))
+                                                  get_relative_path(file_path=file, directory_path=reference_dir)),
+                    source_file_path=source_file_path  # 传入源文件/缓存文件路径
                 )
             else:
                 logger.error(f"{file}不是以init_data或者test开头的文件")
@@ -378,17 +425,18 @@ def generate_conftest_file(init_data, template_path, target_path):
         logger.error(f"生成conftest.py文件时发生错误: {e}")
 
 
-def gen_case_file(filename, case_template_path, case_info, common_dependence, case_data, target_case_path):
+def gen_case_file(filename, case_template_path, case_info, common_dependence, case_data, target_case_path, source_file_path=None):
     """
     核心生成逻辑：根据测试用例数据生成 Python 测试文件
-    
+
     Args:
         filename (str): 生成的 Python 文件名（不含后缀），通常与 YAML 文件名对应
         case_template_path (str): 测试用例模板文件的路径
         case_info (dict): 用例公共信息（Epic, Feature, Story 等 Allure 标签）
         common_dependence (dict): 公共依赖配置
-        case_data (list): 具体的测试步骤列表
+        case_data (list): 具体的测试步骤列表（用于标记生成，不再硬编码到文件）
         target_case_path (str): 生成文件的目标目录
+        source_file_path (str): 用例源文件（YAML/Excel）的绝对路径，用于动态加载
     """
     logger.trace(f"开始处理用例: {filename}")
     try:
@@ -485,17 +533,25 @@ def gen_case_file(filename, case_template_path, case_info, common_dependence, ca
 
         # 5. 准备替换数据
         current_time = datetime.now().strftime("%Y/%m/%d %H:%M")
-        
+
         # 构造替换字典
         # 处理函数名，替换非法字符
         func_title = filename.replace("-", "_")
+
+        # 如果没有传入源文件路径，使用空字符串（会导致动态加载失败）
+        if source_file_path is None:
+            logger.warning(f"用例 {filename} 未指定源文件路径，动态加载将失败")
+            source_file = ""
+        else:
+            source_file = source_file_path
 
         mapping = {
             "DATE": current_time.split(" ")[0],
             "TIME": current_time.split(" ")[1],
             "NAME": filename,
             "PRODUCT_NAME": "PyCharm", # 默认值
-            "case_data": str(case_data), # 将列表转为字符串注入到 Python 代码中
+            "case_data": str(case_data), # 保留用于标记生成，但不再硬编码到文件
+            "case_source_file": source_file, # 用例源文件路径，用于动态加载
             "epic": case_info.get("allure_epic", "Unknown Epic"),
             "feature": case_info.get("allure_feature", "Unknown Feature"),
             "story": case_info.get("allure_story", "Unknown Story"),
