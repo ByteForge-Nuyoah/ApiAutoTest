@@ -3,19 +3,45 @@
 # @Author  : 会飞的🐟
 # @File    : ${NAME}.py
 # @Software: ${PRODUCT_NAME}
-# @Desc: 
+# @Desc: 动态从YAML文件加载用例数据
 
 import pytest
 import allure
 import time
+import os
 from loguru import logger
 from config.settings import GLOBAL_VARS
 from core.requests_utils.request_control import RequestControl
 from core.requests_utils.case_dependence import CaseDependenceHandler
+from core.case_generate_utils.case_data_analysis import CaseDataCheck
+from utils.files_utils.files_handle import load_yaml_file
 
+# 用例数据源文件路径（动态加载，不再硬编码）
+CASE_SOURCE_FILE = "${case_source_file}"
+
+def _load_cases_from_yaml():
+    """
+    从YAML文件动态加载用例数据
+    支持变量替换、数据校验
+    """
+    if not os.path.exists(CASE_SOURCE_FILE):
+        logger.error(f"用例源文件不存在: {CASE_SOURCE_FILE}")
+        return []
+
+    yaml_data = load_yaml_file(CASE_SOURCE_FILE)
+
+    # 使用 CaseDataCheck 进行数据校验和处理
+    case_checker = CaseDataCheck()
+    cases = case_checker.case_process(yaml_data)
+
+    return cases
+
+# 动态加载用例数据
+cases = _load_cases_from_yaml()
+
+# 依赖处理器
 dependence_handler = CaseDependenceHandler(GLOBAL_VARS)
 
-cases = ${case_data}
 
 @allure.epic("${epic}")
 @allure.feature("${feature}")
