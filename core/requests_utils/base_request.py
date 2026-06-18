@@ -8,9 +8,10 @@ import time
 import requests
 from loguru import logger
 from config.settings import OUT_DIR
-from typing import Optional, Union, Dict, Text
+from typing import Optional, Union, Dict, Text, Any
 from requests_toolbelt import MultipartEncoder
 from utils.tools.mock_service import get_mock_service, MockMode
+from requests.models import Response as RequestsResponse
 
 class BaseRequest:
     """
@@ -20,7 +21,7 @@ class BaseRequest:
     TIMEOUT = 30
 
     @classmethod
-    def send_request(cls, req_data):
+    def send_request(cls, req_data: Dict[str, Any]) -> RequestsResponse:
         """
         处理请求数据，转换成可用数据发送请求
         支持Mock服务拦截
@@ -72,7 +73,7 @@ class BaseRequest:
             raise
 
     @classmethod
-    def request_type_for_json(cls, method: Text, url: Text, headers: Optional[Dict], json: Optional[Dict], **kwargs):
+    def request_type_for_json(cls, method: Text, url: Text, headers: Optional[Dict], json: Optional[Dict], **kwargs) -> RequestsResponse:
         """
         处理 requestType 为json格式
         json: 通过这种方式传递的参数会出现在请求体中，并且需要设置Content-Type为application/json。
@@ -97,7 +98,7 @@ class BaseRequest:
         )
 
     @classmethod
-    def request_type_for_params(cls, method: Text, url: Text, headers: Optional[Dict], params: Dict, **kwargs):
+    def request_type_for_params(cls, method: Text, url: Text, headers: Optional[Dict], params: Dict, **kwargs) -> RequestsResponse:
         """
         处理 requestType 为 params
         params: 这是通过URL传递参数的方式。所有传递的参数都会被编码到URL中。requests库会自动处理这些参数的编码。
@@ -120,7 +121,7 @@ class BaseRequest:
         )
 
     @classmethod
-    def request_type_for_data(cls, method: Text, url: Text, headers: Optional[Dict], data: Optional[Dict], **kwargs):
+    def request_type_for_data(cls, method: Text, url: Text, headers: Optional[Dict], data: Optional[Dict], **kwargs) -> RequestsResponse:
         """
         处理 requestType 为 data 类型
         data: 通过这种方式传递的参数会出现在请求体中。
@@ -146,7 +147,7 @@ class BaseRequest:
     @classmethod
     def request_type_for_file(cls, method: Text, url: Text, headers: Optional[Dict],
                               fields: Union[Dict, Text, None],
-                              files: Text, **kwargs):
+                              files: Text, **kwargs) -> RequestsResponse:
         """
         处理 requestType 为 file 类型
 
@@ -208,7 +209,7 @@ class BaseRequest:
         return response
 
     @classmethod
-    def request_type_for_none(cls, method: Text, url: Text, headers: Optional[Dict], **kwargs):
+    def request_type_for_none(cls, method: Text, url: Text, headers: Optional[Dict], **kwargs) -> RequestsResponse:
         """处理 requestType 为 None"""
         logger.trace("发送请求：\n"
                      "request_type=none\n"
@@ -226,7 +227,7 @@ class BaseRequest:
 
     @classmethod
     def request_type_for_export(cls, method: Text, url: str, headers: Optional[Dict], payload: Optional[Dict] = None,
-                                **kwargs):
+                                **kwargs) -> RequestsResponse:
         """
         判断 requestType 为 export 导出类型
         :param method: 请求方法
