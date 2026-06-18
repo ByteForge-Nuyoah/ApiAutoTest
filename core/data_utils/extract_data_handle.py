@@ -4,11 +4,12 @@
 # @Desc: 数据提取处理模块，支持 JSONPath、正则表达式和 Response 对象属性提取
 
 import re
+from typing import Any, Union
 from loguru import logger
 from jsonpath import jsonpath
 from requests import Response, cookies, utils
 
-def json_extractor(obj, expr: str = '.'):
+def json_extractor(obj: Union[dict, list], expr: str = '.') -> Any:
     """
     使用 JSONPath 从目标对象中提取数据。
     
@@ -32,7 +33,7 @@ def json_extractor(obj, expr: str = '.'):
         jp_res = jsonpath(obj, expr)
         
         if jp_res is False:
-            logger.error(f"Jsonpath提取失败！\n提取对象：{obj}\n提取表达式：{expr}")
+            logger.warning(f"Jsonpath提取失败！\n提取对象：{obj}\n提取表达式：{expr}")
             return None
 
         # 如果结果列表长度为1，直接返回元素本身；否则返回列表
@@ -44,7 +45,7 @@ def json_extractor(obj, expr: str = '.'):
                      f"提取结果：{result}\n")
         return result
     except Exception as e:
-        logger.error(f"\n提取对象：{obj}\n"
+        logger.warning(f"\n提取对象：{obj}\n"
                      f"提取表达式： {expr}\n"
                      f"错误信息：{e}\n")
         return e
@@ -70,7 +71,7 @@ def re_extract(obj: str, expr: str = '.'):
         matches = re.findall(expr, obj)
         
         if not matches:
-            logger.debug(f"正则未匹配到数据: expr={expr}, obj={obj[:100]}...")
+            logger.trace(f"正则未匹配到数据: expr={expr}, obj={obj[:100]}...")
             return None
 
         # 如果提取后的数据长度为1，则取第一个元素（返回str），否则返回列表
@@ -88,7 +89,7 @@ def re_extract(obj: str, expr: str = '.'):
         return e
 
 
-def response_extract(response: Response, expr: str = '.'):
+def response_extract(response: Response, expr: str = '.') -> Any:
     """
     从 requests.Response 对象中提取属性值。
     使用 eval 动态执行表达式，支持提取 status_code, cookies, headers, text, json() 等。
