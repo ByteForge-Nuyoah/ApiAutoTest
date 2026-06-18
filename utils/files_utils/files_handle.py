@@ -35,7 +35,7 @@ def load_yaml_file(yaml_file: Text) -> Dict:
         except yaml.YAMLError as ex:
             err_msg = f"YAMLError:\nfile: {yaml_file}\nerror: {ex}"
             logger.error(err_msg)
-            raise err_msg
+            raise yaml.YAMLError(err_msg) from ex
 
         return yaml_content
 
@@ -65,7 +65,7 @@ def load_json_file(json_file: Text) -> Dict:
         except json.JSONDecodeError as ex:
             err_msg = f"JSONDecodeError:\nfile: {json_file}\nerror: {ex}"
             logger.error(err_msg)
-            raise err_msg
+            raise json.JSONDecodeError(err_msg, ex.doc, ex.pos) from ex
 
         return json_content
 
@@ -98,14 +98,14 @@ def load_csv_file(csv_file: Text) -> List[Dict]:
     if not os.path.isabs(csv_file):
         global project_meta
         if project_meta is None:
-            raise "load_project_meta() has not been called!"
+            raise RuntimeError("load_project_meta() has not been called!")
 
         # make compatible with Windows/Linux
         csv_file = os.path.join(project_meta.RootDir, *csv_file.split("/"))
 
     if not os.path.isfile(csv_file):
         # file path not exist
-        raise "file path not exis"
+        raise FileNotFoundError(f"CSV文件不存在: {csv_file}")
 
     csv_content_list = []
 
@@ -185,17 +185,16 @@ def zip_file(in_path: str, out_path: str):
     # 如果传入的路径是一个目录才进行压缩操作
     if os.path.isdir(in_path):
         logger.trace(f"目标路径:{in_path} 是一个目录，开始进行压缩......")
-        # 写入
-        zip = zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED)
-        for path, dirnames, filenames in os.walk(in_path):
-            # 去掉目标跟路径，只对目标文件夹下边的文件及文件夹进行压缩
-            fpath = path.replace(in_path, '')
-            for filename in filenames:
-                zip.write(
-                    os.path.join(
-                        path, filename), os.path.join(
-                        fpath, filename))
-        zip.close()
+        # 使用 with 语句确保文件句柄正确关闭
+        with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for path, dirnames, filenames in os.walk(in_path):
+                # 去掉目标跟路径，只对目标文件夹下边的文件及文件夹进行压缩
+                fpath = path.replace(in_path, '')
+                for filename in filenames:
+                    zipf.write(
+                        os.path.join(path, filename),
+                        os.path.join(fpath, filename)
+                    )
         logger.debug(f"目标路径:{in_path} 压缩完成！, 压缩文件路径：{out_path}")
     else:
         logger.error(f"目标路径:{in_path} 不是一个目录，请检查！")
@@ -243,7 +242,7 @@ def copy_file(src_file_path, dest_dir_path):
         logger.debug(f"复制文件成功，源文件：{src_file_path}, 目标文件：{dest_dir_path}")
         return "复制成功"
     except Exception as e:
-        logger.error(f"复制文件成功，源文件：{src_file_path}, 目标文件：{dest_dir_path}")
+        logger.error(f"复制文件失败，源文件：{src_file_path}, 目标文件：{dest_dir_path}, 错误：{e}")
         return f"复制失败：{e}"
 
 
