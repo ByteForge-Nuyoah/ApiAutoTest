@@ -4,6 +4,7 @@
 # @Desc: 用例依赖处理模块
 
 import allure
+from typing import Dict, List, Union, Any, Optional
 from loguru import logger
 from config.settings import INTERFACE_DIR
 from core.data_utils.data_handle import data_handle
@@ -18,13 +19,13 @@ class CaseDependenceHandler:
     先处理环境变量依赖，再处理接口依赖，最后处理数据库查询依赖
     """
 
-    def __init__(self, source):
+    def __init__(self, source: Dict[str, Any]) -> None:
         self.source = source
 
-    def handle_variables(self, variables):
+    def handle_variables(self, variables: Dict[str, Any]) -> None:
         """
         处理环境变量依赖
-        
+
         Args:
             variables (dict): 环境变量字典，例如: {"key": "value", "key2": "${var}"}
                               支持引用已有的全局变量。
@@ -32,13 +33,13 @@ class CaseDependenceHandler:
         for key, value in variables.items():
             new_value = data_handle(value, self.source)
             allure_step(f"依赖环境变量 --> {key}={new_value}")
-            logger.debug(f"依赖环境变量 --> {key}={new_value}")
+            logger.trace(f"依赖环境变量 --> {key}={new_value}")
             self.source.update({key: new_value})
 
-    def handle_interfaces(self, interfaces):
+    def handle_interfaces(self, interfaces: Union[str, List[str]]) -> None:
         """
         处理接口依赖
-        
+
         Args:
             interfaces (str or list): 依赖的接口ID或接口ID列表。
                                       例如: "login_01" 或 ["login_01", "init_data_01"]
@@ -51,10 +52,10 @@ class CaseDependenceHandler:
                 result = request_control.api_request_flow(request_data=api_data, global_var=self.source)
                 self.source.update(result)
 
-    def handle_database_dependence(self, database_dependence, db_info: dict):
+    def handle_database_dependence(self, database_dependence: Union[Dict[str, Any], List[Dict[str, Any]]], db_info: Dict[str, Any]) -> None:
         """
         处理数据库依赖
-        
+
         Args:
             database_dependence (dict or list): 数据库依赖配置。
                 格式示例:
@@ -65,7 +66,7 @@ class CaseDependenceHandler:
             db_info (dict): 数据库连接配置信息。
         """
         if not db_info:
-            logger.error("数据库配置信息为空，请正确更新数据库信息以连接数据库")
+            logger.warning("数据库配置信息为空，请正确更新数据库信息以连接数据库")
             return
         mysql = MysqlServer(**db_info)
         for db_item in (database_dependence if isinstance(database_dependence, list) else [database_dependence]):
@@ -73,7 +74,7 @@ class CaseDependenceHandler:
                 sql = db_item["sql"]
                 sql_result = mysql.query_all(sql)
                 allure_step(f"依赖的数据库sql:{sql}, 查询结果：{sql_result}")
-                logger.debug(f"依赖的数据库sql:{sql}, 查询结果：{sql_result}")
+                logger.trace(f"依赖的数据库sql:{sql}, 查询结果：{sql_result}")
                 db_item.pop("sql")
 
                 for extraction_type, extractions in db_item.items():
@@ -88,13 +89,13 @@ class CaseDependenceHandler:
                             res = re_extract(str(sql_result), pattern)
                             self.source.update({key: res})
                             allure_step(f"通过正则表达式从数据库提取参数：{key}:{res}")
-                            logger.debug(f"通过正则表达式从数据库提取参数：{key}:{res}")
+                            logger.trace(f"通过正则表达式从数据库提取参数：{key}:{res}")
                     else:
                         logger.error(f"提取方式： {extraction_type} 错误，仅支持type_jsonpath、type_re两种")
             else:
-                logger.error("数据库依赖参数必须传入sql")
+                logger.warning("数据库依赖参数必须传入sql")
 
-    def case_dependence_handle(self, case_dependence: dict, db_info: dict = None):
+    def case_dependence_handle(self, case_dependence: Dict[str, Any], db_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         处理用例依赖，支持接口依赖，环境变量依赖，SQL依赖。关键字：variables, interface, database,
         先处理环境变量依赖，再处理接口依赖，最后处理SQL依赖
@@ -108,23 +109,23 @@ class CaseDependenceHandler:
             if isinstance(case_dependence["variables"], dict):
                 self.handle_variables(case_dependence["variables"])
             else:
-                logger.error("依赖环境变量格式错误，跳过依赖环境变量处理~ --> variables仅支持dict格式")
+                logger.warning("依赖环境变量格式错误，跳过依赖环境变量处理~ --> variables仅支持dict格式")
 
         if case_dependence.get("interface"):
             interfaces = case_dependence["interface"]
             if isinstance(interfaces, (str, list)):
                 self.handle_interfaces(interfaces)
             else:
-                logger.error("依赖接口格式错误，跳过依赖接口处理~ --> interface 仅支持str和list格式")
+                logger.warning("依赖接口格式错误，跳过依赖接口处理~ --> interface 仅支持str和list格式")
         if case_dependence.get("database"):
             if db_info:
                 database_dependence = case_dependence["database"]
                 if isinstance(database_dependence, (dict, list)):
                     self.handle_database_dependence(database_dependence, db_info)
                 else:
-                    logger.error("依赖数据库格式错误，跳过依赖数据库处理~ --> database 仅支持dict和list格式")
+                    logger.warning("依赖数据库格式错误，跳过依赖数据库处理~ --> database 仅支持dict和list格式")
             else:
-                logger.error("数据库依赖参数未传入db_info，跳过依赖数据库处理~")
+                logger.warning("数据库依赖参数未传入db_info，跳过依赖数据库处理~")
         else:
-            logger.debug("不存在关键字database，跳过依赖数据库处理~")
+            logger.trace("不存在关键字database，跳过依赖数据库处理~")
         return self.source
