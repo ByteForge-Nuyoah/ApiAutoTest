@@ -70,8 +70,8 @@ def try_parse_json(value):
            (value.startswith('[') and value.endswith(']')):
             try:
                 return json.loads(value)
-            except:
-                pass
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.trace(f"JSON解析失败，保持原值: {value[:50]}... 错误: {e}")
     return value
 
 
