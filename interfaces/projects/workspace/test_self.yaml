@@ -31,7 +31,7 @@ case_info:
     assert_userId_exist:
       message: 断言响应中data.userId字段存在
       expect_value: "5d89d678ef0703376a4650a3"
-      assert_type: "=="  # 统一用==断言
+      assert_type: "=="
       type_jsonpath: "$.data.userId"
   assert_sql:
   extract:
