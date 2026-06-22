@@ -1,7 +1,8 @@
 # API 自动化测试框架
 
 ## 一、框架介绍
-本框架是基于 Python + Pytest + Allure + Loguru 实现的接口自动化测试框架，支持 YAML/Excel 用例管理、多环境切换、多项目复用、以及丰富的通知机制。
+
+本框架是基于 Python + Pytest + Allure + Loguru 实现的接口自动化测试框架，支持 YAML/Excel/gRPC 用例管理、多环境切换、多项目复用、以及丰富的通知机制。
 
 ## 二、核心功能
 
@@ -9,19 +10,24 @@
     *   使用 `.env` 文件统一管理账号、密码、密钥等敏感信息
     *   支持多项目/多环境配置 (`config/*.yaml`)，通过 `${VAR}` 动态引用环境变量
 *   **多源用例生成与隔离**
-    *   支持同时从 YAML 和 Excel 生成测试用例
+    *   支持同时从 YAML、Excel、gRPC Proto 生成测试用例
     *   生成隔离: YAML 用例生成至 `testcases/test_auto_case/yaml_case/`，Excel 用例生成至 `testcases/test_auto_case/excel_case/`
     *   文件命名规范：Excel 用例生成文件名格式为 `test_excel_<文件名>.py`
+    *   gRPC 用例自动转换为 HTTP RESTful API 格式
 *   **多项目与多环境支持**
     *   通过 `-env <project_name>` 参数一键切换项目/环境配置
 *   **其他特性**
     *   Session 会话自动关联
     *   动态参数提取与依赖注入 (JSONPath/Regex)
+    *   数据库断言与数据清理
+    *   Mock 服务支持（录制、回放、Stub）
+    *   失败快照自动捕获
     *   Allure 定制化报告
-    *   Loguru 优雅日志
+    *   Loguru 优雅日志（统一日志级别）
     *   多渠道通知 (邮件/钉钉/企业微信)
     *   Docker 容器化支持
     *   GitHub Actions CI 集成
+    *   完整的类型标注支持
 
 ## 三、项目结构
 
@@ -29,7 +35,8 @@
 ApiAutotest/
 ├── .github/                 # GitHub Actions CI 配置
 │   └── workflows/
-│       └── ci.yaml          # CI/CD 流水线配置
+│       ├── ci.yaml          # CI/CD 流水线配置
+│       └── dependency-check.yaml  # 依赖安全检查
 ├── config/                  # 配置文件目录
 │   ├── settings.py          # 全局配置文件
 │   ├── test.yaml            # 测试环境配置
@@ -39,20 +46,32 @@ ApiAutotest/
 │   ├── case_generate_utils/ # 用例自动生成工具
 │   ├── data_utils/          # 数据处理工具
 │   ├── report_utils/        # 报告生成与发送工具
-│   └── requests_utils/      # 请求封装工具
+│   ├── requests_utils/      # 请求封装工具
+│   └── models.py            # 数据模型定义
 ├── files/                   # 测试数据文件 (上传下载等)
-├── interfaces/              # 接口定义目录 (YAML/Excel 用例源文件)
+├── interfaces/              # 接口定义目录 (YAML/Excel/Proto 用例源文件)
 │   └── projects/            # 按项目分类的接口定义
 ├── lib/                     # 第三方库或工具 (如 Allure 命令行工具)
 ├── outputs/                 # 输出产物目录
 │   ├── logs/                # 运行日志
-│   └── report/              # 测试报告
+│   ├── report/              # 测试报告
+│   ├── 、     # Mock 录制文件
+│   └── download_files/      # 文件下载目录
 ├── testcases/               # 测试用例目录
 │   ├── test_auto_case/      # 自动生成的测试用例
 │   │   ├── excel_case/      # Excel 生成的用例
 │   │   └── yaml_case/       # YAML 生成的用例
 │   └── test_manual_case/    # 手动编写的测试用例
 ├── utils/                   # 通用工具类
+│   ├── yaml_case_maker/     # 用例生成工具
+│   │   ├── grpc_for_yaml.py      # gRPC 转 YAML 工具
+│   │   ├── openapi_for_yaml.py   # OpenAPI 转 YAML 工具
+│   │   ├── postman_for_yaml.py   # Postman 转 YAML 工具
+│   │   └── swagger_for_yaml.py   # Swagger 转 YAML 工具
+│   ├── database_utils/      # 数据库工具
+│   ├── files_utils/         # 文件处理工具
+│   ├── logger_utils/        # 日志工具
+│   └── tools/               # 其他工具
 ├── .dockerignore            # Docker 构建忽略文件
 ├── .env                     # 环境变量配置文件 (敏感信息)
 ├── .env.example             # 环境变量示例文件
@@ -67,7 +86,9 @@ ApiAutotest/
 ## 四、快速开始
 
 ### 1. 安装依赖（推荐使用虚拟环境）
+
 macOS 环境的系统 Python 受外部管理，建议使用虚拟环境隔离依赖：
+
 ```bash
 # 创建并启用虚拟环境
 python3 -m venv venv
@@ -78,1931 +99,1190 @@ pip install -r requirements.txt
 ```
 
 ### 2. 配置环境 (.env)
+
 复制模板文件并配置您的敏感信息：
+
 ```bash
 cp .env.example .env
 ```
+
 在 `.env` 中填入真实的数据库密码、API Key 等信息：
+
 ```properties
 # .env 示例
 TEST_DB_HOST=127.0.0.1
+TEST_DB_PORT=3306
+TEST_DB_USER=root
 TEST_DB_PWD=secret_password
-DEMO_HOST=https://demo.api.com
+TEST_DB_DATABASE=test_db
+
+PROD_HOST=https://prod.api.com
+PROD_DB_HOST=prod.db.com
+PROD_DB_PWD=prod_secret_password
+
+# 邮件通知配置
+EMAIL_USER=your_email@example.com
+EMAIL_PASSWORD=your_email_password
+EMAIL_HOST=smtp.example.com
+EMAIL_TO_LIST=user1@example.com,user2@example.com
+
+# 钉钉/企业微信通知配置
+DINGTALK_WEBHOOK=https://oapi.dingtalk.com/robot/send?access_token=xxx
+DINGTALK_SECRET=SECxxx
+WECHAT_WEBHOOK=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
 ```
 
 ### 3. 配置项目 (config/*.yaml / *.yml)
+
 在 `config/` 目录下创建项目配置文件（如 `prod.yaml` 或 `test.yaml`），支持引用 `.env` 变量：
+
 ```yaml
-# config/prod.yaml
+# config/prod.yaml 示例
 host: ${PROD_HOST}
 username: "admin"
+password: "${PROD_PASSWORD}"
+
+# 数据库配置
 db_info:
   db_host: ${PROD_DB_HOST}
+  db_port: ${PROD_DB_PORT}
+  db_user: ${PROD_DB_USER}
+  db_pwd: ${PROD_DB_PWD}
+  db_database: ${PROD_DB_DATABASE}
 ```
 
-### 4. 运行测试
+### 4. 编写 YAML 用例
+
+在 `interfaces/projects/` 下创建 YAML 用例文件：
+
+```yaml
+# interfaces/projects/workspace/test_login.yaml
+case_common:
+  allure_epic: workspace
+  allure_feature: 用户登录模块
+  allure_story: 登录接口
+  case_markers:
+    - workspace
+    - smoke
+    - login
+
+case_info:
+  - id: login_01
+    title: 用户登录
+    run: True
+    severity: normal
+    url: /api/crm/v4/user/login
+    method: POST
+    headers:
+      Content-Type: application/json;charset=utf-8;
+    cookies:
+    request_type: json
+    payload:
+      username: admin
+      password: '"123123"'
+      appPlatform: work-space
+      appVersion: 1.0.1
+    files:
+    wait_seconds: 2
+    case_dependence:
+    assert_response:
+      status_code: 200
+      assert_token_exist:
+        message: 断言响应中data.token字段存在
+        expect_value: "admin"
+        assert_type: "=="
+        type_jsonpath: "$.data.user.username"
+    assert_sql:
+    extract:
+      response:
+        type_jsonpath:
+          token: $.data.token
+          openid: $.data.user.openid
+```
+
+### 5. 运行测试
+
 ```bash
-# 运行默认测试环境（已激活虚拟环境）
-python3 run.py
+# 运行所有测试（不生成报告）
+python run.py -env test -report no
 
-# 或未激活时使用虚拟环境中的解释器
-./venv/bin/python3 run.py
+# 运行指定标记的测试
+python run.py -env test -m "smoke"
+
+# 运行指定项目的测试
+python run.py -env test -project workspace
+
+# 生成 Allure HTML 报告
+python run.py -env test -report yes
+
+# 开启定时任务
+python run.py -cron
 ```
 
-## 五、运行参数与方式
+### 6. 查看测试报告
 
-本项目统一通过 `run.py` 入口文件执行测试，支持多种参数组合以满足不同场景需求。
+测试完成后，报告会生成在 `outputs/report/allure_html/` 目录：
 
-### 1. 命令行参数说明
-| 参数 | 缩写 | 默认值 | 说明 | 示例 |
-| :--- | :--- | :--- | :--- | :--- |
-| `--env` | `-env` | `test` | 指定运行环境，对应 `config/{env}.yaml` 配置文件 | `python3 run.py -env live` |
-| `--m` | `-m` | `None` | 运行指定标记 (Marker) 的用例 | `python3 run.py -m smoke` |
-| `--report` | `-report` | `yes` | 是否生成 Allure HTML 报告 (yes/no) | `python3 run.py -report no` |
-| `--cron` | `-cron` | `False` | 是否开启定时任务模式 | `python3 run.py -cron` |
-| `--project` | `-project` | `None` | 指定运行的项目名称，多个项目用逗号分隔 | `python3 run.py -project workspace` |
-
-### 2. 常见运行场景
-
-**场景一：切换测试环境**
 ```bash
-# 运行 live 环境 (加载 config/live.yaml)
-python3 run.py -env live
+# 打开报告
+open outputs/report/allure_html/index.html
+
+# 或使用 Allure 命令行工具
+allure serve outputs/report/allure_results
 ```
 
-**场景二：只运行冒烟测试用例**
-```bash
-# 仅运行被标记为 smoke 的用例
-python3 run.py -m smoke
+## 五、用例编写规范
 
-# 运行 login 标记的用例
-python3 run.py -m login
+### 1. YAML 用例结构说明
 
-# 运行 auto 标记的用例
-python3 run.py -m auto
-
-# 运行 excel_case 标记的用例
-python3 run.py -m excel_case
-```
-
-**场景三：CI/CD 流水线集成**
-```bash
-# 在流水线中通常不需要本地生成 HTML 报告
-python3 run.py -env test -report no
-```
-
-**场景四：开启定时任务**
-```bash
-# 启动定时任务调度器（按配置文件中的时间运行）
-python3 run.py -cron
-
-# 后台运行（推荐用于服务器）
-nohup python3 run.py -cron > outputs/logs/schedule.log 2>&1 &
-
-# 使用 screen 后台运行
-screen -dmS autotest python3 run.py -cron
-```
-
-**定时任务配置**（`config/settings.py`）：
-```python
-SCHEDULE_CONFIG = {
-    "enabled": True,       # 是否启用定时任务
-    "run_time": "22:00",   # 每天运行时间（24小时制）
-    "env": "test",         # 运行环境
-    "report": "yes",       # 是否生成报告
-    "markers": None,       # 运行指定标记的用例（None 表示运行全部）
-}
-```
-
-### 3. Pytest 与 Allure 参数说明
-
-**用例创建原则：**
-- 测试文件名必须以 `test` 开头
-- 测试函数必须以 `test` 开头
-
-**Pytest 相关参数**（可在 `pytest.ini` 中配置）：
-
-| 参数 | 说明 |
-|------|------|
-| `--reruns` | 失败重跑次数 |
-| `--reruns-delay` | 失败重跑间隔时间 |
-| `--count` | 重复执行次数 |
-| `-v` | 显示错误位置以及错误的详细信息 |
-| `-s` | 等价于 `pytest --capture=no`，可以捕获 print 函数的输出 |
-| `-q` | 简化输出信息 |
-| `-m` | 运行指定标签的测试用例 |
-| `-x` | 一旦错误，则停止运行 |
-| `--cache-clear` | 清除 pytest 的缓存 |
-| `--maxfail` | 设置最大失败次数，超出阈值则停止执行 |
-
-**Allure 相关参数：**
-
-| 参数 | 说明 |
-|------|------|
-| `--alluredir` | 指定存储测试结果的路径 |
-| `--clean-alluredir` | 清除之前的测试结果 |
-| `--allure-no-capture` | 禁用自动捕获 stdout/stderr/log 到报告（推荐开启，报告更简洁） |
-
-## 六、用例编写指南
-
-### 1. 目录结构
-```text
-interfaces/
-  ├── project_a/         # 项目 A 的接口定义
-  │     ├── test_login.yaml
-  │     └── test_pay.xlsx
-  └── project_b/         # 项目 B 的接口定义
-        └── test_order.yaml
-```
-
-### 2. YAML 用例示例
-文件名必须以 `test_` 开头（如 `test_demo.yaml`）。
+#### 1.1 公共配置字段（case_common）
 
 ```yaml
 case_common:
-  allure_epic: 电商平台          # Allure 报告的一级目录
-  allure_feature: 用户管理模块    # Allure 报告的二级目录
-  allure_story: 用户登录与验证    # Allure 报告的三级目录
-  case_markers: ['smoke', 'p0'] # Pytest 标记
+  allure_epic: workspace              # @allure.epic() 装饰器内容
+  allure_feature: 用户登录模块          # @allure.feature() 装饰器内容
+  allure_story: 登录接口               # @allure.story() 装饰器内容
+  case_markers:                        # 测试方法标记
+    - workspace                        # 字符串格式：添加 @pytest.mark.workspace
+    - smoke                            # 多个标记用列表形式
+    - {'skip': '跳过执行该用例'}        # 字典格式：跳过用例并说明原因
+```
 
+**case_markers 说明：**
+- 支持自定义标记
+- 支持 pytest 内置标记：skip, usefixtures
+- 格式：列表嵌套字符串或字典
+- 示例：`['marker1', 'marker2', {'skip': '跳过原因'}]`
+
+#### 1.2 公共依赖配置（common_dependence）
+
+作用范围：**class** 级别，应用于整个测试类
+
+```yaml
+common_dependence:
+  setup:                               # 前置依赖（测试类执行前）
+    interface: login_01                # 接口依赖
+    database:                          # 数据库依赖
+      sql: "SELECT * FROM users"
+      type_jsonpath:
+        user_id: "$[0].user_id"
+    env_vars:                          # 环境变量依赖
+      timestamp: "${generate_time()}"
+  teardown:                            # 后置依赖（测试类执行后）
+    interface: logout_01
+    database:
+      sql: "DELETE FROM test_data"
+    env_vars:
+      status: "completed"
+```
+
+#### 1.3 用例信息字段（case_info）
+
+具体测试用例数据，以**列表**形式管理：
+
+```yaml
 case_info:
-  # 场景一：登录并提取 Token
-  - id: login_01
-    title: 用户登录
-    url: /api/user/login
-    method: POST
-    headers:
+  -
+    id: login_01                       # 用例ID，全局唯一，用于接口依赖
+    title: 用户登录                     # 用例标题
+    severity: normal                   # 用例优先级
+    run: True                          # 是否执行（True/False，空则True）
+    url: /api/login                    # 请求路径（资源路径或全路径）
+    method: POST                       # 请求方式：GET/POST/PUT/DELETE/PATCH等
+    headers:                           # 请求头（注意：cookies值需为字符串）
       Content-Type: application/json
-    payload:
-      username: ${username}      # 引用全局变量/环境变量
-      password: ${password}
-    # 数据提取：从响应中提取数据供后续使用
-    extract:
-      token: $.data.token        # 使用 JSONPath 提取 token
-      user_id: $.data.id         # 提取用户 ID
-    # 响应断言
-    assert_response:
-      status_code: 200           # 校验 HTTP 状态码
-      assert_msg:
-        type_jsonpath: "$.msg"   # 校验响应体字段
-        expect_value: "login success"
-        assert_type: "=="        # 断言类型：==, !=, in, not_in 等
-
-  # 场景二：查询用户信息（依赖登录 Token）
-  - id: get_user_info_01
-    title: 查询用户信息
-    url: /api/user/info
-    method: GET
-    headers:
-      Authorization: Bearer ${token}  # 使用上一步提取的 token
-    # 用例依赖：确保前置条件满足
-    case_dependence:
+    cookies:                           # 请求cookies（DICT或CookieJar对象）
+    request_type: json                 # 请求数据类型：params/json/file/data
+    payload:                           # 请求参数
+      username: admin
+      password: "123456"
+    files: upload/test.png             # 上传文件相对路径（自动拼接files目录）
+    wait_seconds: 2                    # 请求后等待时间（秒）
+    case_dependence:                   # 用例依赖（function级别）
       setup:
-        interface: login_01      # 依赖登录接口
-    # 响应断言
-    assert_response:
+        interface: init_01
+      teardown:
+        env_vars:
+          status: done
+    assert_response:                   # 响应断言
       status_code: 200
-      assert_code:
-        type_jsonpath: "$.code"
-        expect_value: 0
-        assert_type: "=="
-    # 数据库断言
-    assert_sql:
-      - sql: "SELECT username FROM users WHERE id='${user_id}'"
-        expect_value: "test_user"
-        assert_type: "=="
+    assert_sql:                        # 数据库断言
+    extract:                           # 后置参数提取
+      response:
+        type_jsonpath:
+          token: $.data.token
 ```
 
-### 3. 自动生成说明
-*   运行 `run.py` 时，框架会自动扫描 `interfaces/` 下的文件
-*   YAML 文件生成的测试代码存放于：`testcases/test_auto_case/yaml_case/`
-*   Excel 文件生成的测试代码存放于：`testcases/test_auto_case/excel_case/`
-*   Excel 文件生成的文件名格式：`test_excel_<原文件名>.py`（如 `test_crm.xlsx` → `test_excel_crm.py`）
+**字段详细说明：**
 
-## 七、数据清理机制
+| 字段 | 必填 | 类型 | 说明 |
+|------|------|------|------|
+| `id` | 是 | str | 用例唯一标识，用于依赖调用 |
+| `title` | 是 | str | 用例标题 |
+| `severity` | 否 | str | 优先级：BLOCKER/CRITICAL/NORMAL/MINOR/TRIVIAL，默认NORMAL |
+| `run` | 否 | bool | 是否执行，空或True执行，False不执行 |
+| `url` | 是 | str | 请求路径（资源路径或完整URL） |
+| `method` | 是 | str | 请求方式：GET/POST/PUT/PATCH/DELETE/HEAD/OPTION |
+| `headers` | 是 | dict | 请求头，cookies值需为字符串类型 |
+| `cookies` | 否 | dict/CookieJar | 请求cookies |
+| `request_type` | 是 | str | 请求类型：params/json/file/data/export/none |
+| `payload` | 否 | dict | 请求参数 |
+| `files` | 否 | str | 上传文件相对路径（自动拼接files目录） |
+| `wait_seconds` | 否 | int | 请求后等待秒数 |
+| `case_dependence` | 否 | dict | 用例依赖（function级别） |
+| `assert_response` | 是 | dict | 响应断言 |
+| `assert_sql` | 否 | dict | 数据库断言 |
+| `extract` | 否 | dict | 参数提取 |
 
-数据清理机制用于保证测试环境隔离，避免测试数据污染。
+**URL 处理说明：**
+- 请求路径 = 基准路径（host）+ 资源路径（url）
+- 通常填写资源路径即可，执行时会自动拼接
+- 支持填写完整 URL，但建议使用资源路径保持统一
 
-### 1. 配置说明
+#### 1.4 用例依赖配置（case_dependence）
 
-在 `config/settings.py` 中配置数据清理：
+作用范围：**function** 级别，应用于单个测试方法
 
-```python
-DATA_CLEANUP_CONFIG = {
-    "enabled": True,  # 是否启用数据清理
-    "databases": {
-        "default": {
-            "host": "localhost",
-            "port": 3306,
-            "user": "root",
-            "password": "password",
-            "database": "test_db",
-            "ssh": False,  # 是否通过 SSH 隧道连接
-            "ssh_config": {
-                "ssh_host": "ssh.example.com",
-                "ssh_port": 22,
-                "ssh_user": "ssh_user",
-                "ssh_pwd": "ssh_password",
-            }
-        }
-    },
-    "cleanup_on_failure": True,  # 失败时是否清理
-    "cleanup_on_success": True,  # 成功时是否清理
-}
+```yaml
+case_dependence:
+  setup:                               # 前置依赖（测试方法执行前）
+    interface: login_01                # 接口依赖（str或list）
+    database:                          # 数据库依赖
+      sql: "SELECT * FROM users WHERE id=1"
+      type_jsonpath:
+        user_id: "$[0].user_id"
+    env_vars:                          # 环境变量依赖
+      timestamp: "${generate_time()}"
+  teardown:                            # 后置依赖（测试方法执行后）
+    interface:
+      - cleanup_01
+      - logout_01
+    database:
+      sql: "DELETE FROM test_data WHERE user_id=${user_id}"
+    env_vars:
+      test_status: "completed"
 ```
 
-### 2. 命令行参数
+### 2. 断言方式说明
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--cleanup` | `auto` | 清理模式：`auto`（自动）、`manual`（手动）、`skip`（跳过） |
+框架支持以下断言类型：
 
-```bash
-# 自动清理（默认）
-python3 run.py --cleanup auto
+| 断言类型 | 枚举值 | 说明 | 示例 |
+|---------|-------|------|------|
+| `==` | equals | 相等断言 | 预期 == 实际 |
+| `!=` | not_equals | 不相等断言 | 预期 != 实际 |
+| `lt` | less_than | 小于断言 | 预期 < 实际 |
+| `le` | less_than_or_equals | 小于等于断言 | 预期 ≤ 实际 |
+| `gt` | greater_than | 大于断言 | 预期 > 实际 |
+| `ge` | greater_than_or_equals | 大于等于断言 | 预期 ≥ 实际 |
+| `str_eq` | string_equals | 字符串相等断言 | 字符串比较 |
+| `len_eq` | length_equals | 长度相等断言 | len(预期) == len(实际) |
+| `len_gt` | length_greater_than | 长度大于断言 | 预期 > len(实际) |
+| `len_ge` | length_greater_than_or_equals | 长度大于等于断言 | 预期 ≥ len(实际) |
+| `len_lt` | length_less_than | 长度小于断言 | 预期 < len(实际) |
+| `len_le` | length_less_than_or_equals | 长度小于等于断言 | 预期 ≤ len(实际) |
+| `contains` | contains | 包含断言 | 预期 in 实际 |
+| `contained_by` | contained_by | 被包含断言 | 实际 in 预期 |
+| `startswith` | startswith | 开头匹配断言 | 实际.startswith(预期) |
+| `endswith` | endswith | 结尾匹配断言 | 实际.endswith(预期) |
 
-# 手动清理（需在用例中手动调用）
-python3 run.py --cleanup manual
+**注意：**
+- 断言时左侧是预期结果，右侧是实际结果
+- 例如 `assert_type: lt` 表示：预期结果 < 实际结果
 
-# 跳过清理
-python3 run.py --cleanup skip
+### 3. 响应断言说明
+
+#### 3.1 断言状态码
+
+```yaml
+assert_response:
+  status_code: 200                     # 直接断言HTTP状态码
 ```
 
-### 3. 使用方式
+#### 3.2 响应数据断言
 
-**方式一：使用 fixture 自动清理**
-
-```python
-def test_create_order(data_cleanup):
-    """
-    使用 data_cleanup fixture 自动注册清理任务
-    测试结束后自动执行清理
-    """
-    # 注册清理任务
-    data_cleanup.register_cleanup(
-        test_id="test_create_order",
-        cleanup_sql="DELETE FROM orders WHERE order_no='TEST001'",
-        db_name="default"
-    )
-    
-    # 执行测试...
+```yaml
+assert_response:
+  assert_token_exist:                  # 断言标识（自定义，无实际意义）
+    message: 断言响应中token字段存在      # 断言描述信息（可选）
+    expect_value: "admin"              # 预期结果
+    assert_type: ==                    # 断言类型
+    type_jsonpath: $.data.user.username  # JSONPath提取实际结果
 ```
 
-**方式二：使用数据库快照**
+**断言参数说明：**
 
-```python
-def test_update_user(db_snapshot):
-    """
-    使用 db_snapshot fixture 创建快照
-    测试结束后自动恢复数据
-    """
-    # 创建快照
-    original_data = db_snapshot(
-        db_name="default",
-        table="users",
-        condition="id=1"
-    )
-    
-    # 执行测试（修改数据）...
-    # 测试结束后自动恢复快照
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `message` | 否 | 断言描述信息 |
+| `expect_value` | 是 | 预期结果 |
+| `assert_type` | 是 | 断言类型 |
+| `type_jsonpath` | 否 | JSONPath表达式从response.json()提取 |
+| `type_re` | 否 | 正则表达式从response.text提取 |
+
+**提取方式说明：**
+- `type_jsonpath`：从响应JSON中提取，与`type_re`任选其一
+- `type_re`：从响应文本中提取，与`type_jsonpath`任选其一
+- 不填写提取方式：默认使用response.text作为实际结果
+
+#### 3.3 响应断言示例
+
+```yaml
+# 示例1：JSONPath提取断言
+assert_response:
+  check_user_id:
+    message: 验证用户ID正确
+    expect_value: "12345"
+    assert_type: ==
+    type_jsonpath: $.data.user_id
+
+# 示例2：正则表达式提取断言
+assert_response:
+  check_token_format:
+    message: 验证token格式正确
+    expect_value: "eyJ"
+    assert_type: startswith
+    type_re: '"token":"(.*?)"
+
+# 示例3：包含断言
+assert_response:
+  check_message:
+    message: 验证响应消息包含"成功"
+    expect_value: "成功"
+    assert_type: contains
+    type_jsonpath: $.message
 ```
 
-**方式三：手动数据准备与清理**
+### 4. 数据库断言说明
 
-```python
-def test_with_manual_cleanup(cleanup_manager):
-    """
-    手动控制数据准备和清理
-    """
-    # 准备测试数据
-    test_data = [
-        {"id": 1, "name": "test_user1"},
-        {"id": 2, "name": "test_user2"}
-    ]
-    cleanup_manager.insert_test_data(
-        db_name="default",
-        table="test_users",
-        data=test_data
-    )
-    
-    try:
-        # 执行测试...
-        pass
-    finally:
-        # 清理测试数据
-        cleanup_manager.delete_by_condition(
-            db_name="default",
-            table="test_users",
-            condition="id IN (1, 2)"
-        )
+#### 4.1 数据库断言参数
+
+```yaml
+assert_sql:
+  check_user_record:                   # 断言标识（自定义）
+    message: 断言数据库中存在用户记录    # 断言描述（可选）
+    sql: "SELECT * FROM users WHERE username='admin'"  # SQL查询语句
+    expect_value: 1                    # 预期结果
+    assert_type: len_eq                # 断言类型
+    type_jsonpath: "$[0].user_id"      # JSONPath从查询结果提取（可选）
 ```
 
-### 4. 清理策略对比
+**断言参数说明：**
 
-| 策略 | 适用场景 | 优点 | 缺点 |
-|------|----------|------|------|
-| 注册清理 | 需要精确控制清理时机 | 灵活、可控 | 需要手动注册 |
-| 快照恢复 | 需要保持数据原状 | 自动恢复、安全 | 大数据量时较慢 |
-| 手动控制 | 复杂测试场景 | 完全可控 | 代码量较多 |
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `message` | 否 | 断言描述信息 |
+| `sql` | 是 | SQL查询语句 |
+| `expect_value` | 是 | 集预期结果 |
+| `assert_type` | 是 | 断言类型 |
+| `type_jsonpath` | 否 | JSONPath从查询结果提取 |
+| `type_re` | 否 | 正则表达式从查询结果提取 |
 
-### 5. 最佳实践
+**数据库查询说明：**
+- 使用查询所有（query_all）方法，返回list格式
+- 如果多条符合条件，返回所有数据
+- 不填写提取方式：默认使用整个查询结果作为实际结果
 
-1. **测试数据隔离**：每个测试用例使用唯一标识（如时间戳）创建数据
-2. **清理优先级**：优先使用快照恢复，其次使用注册清理
-3. **条件删除**：使用精确条件删除，避免误删其他数据
-4. **事务回滚**：对于支持事务的数据库，可考虑使用事务回滚
+#### 4.2 数据库断言示例
 
-## 八、异常处理增强
+```yaml
+# 示例1：验证查询结果数量
+assert_sql:
+  check_user_count:
+    message: 断言数据库中用户记录数为1
+    sql: "SELECT * FROM users WHERE user_id=${user_id}"
+    expect_value: 1
+    assert_type: len_eq
 
-异常处理机制用于快速定位测试失败原因，提供详细的错误上下文。
+# 示例2：验证字段值（JSONPath提取）
+assert_sql:
+  check_user_status:
+    message: 断言用户状态为active
+    sql: "SELECT status FROM users WHERE user_id=${user_id}"
+    expect_value: "active"
+    assert_type: ==
+    type_jsonpath: "$[0].status"
 
-### 1. 异常分类
-
-框架提供统一的异常分类体系：
-
-| 异常类型 | 分类 | 说明 |
-|----------|------|------|
-| `AssertionException` | assertion | 断言失败 |
-| `RequestException` | request | 请求异常 |
-| `DataException` | data | 数据异常 |
-| `ConfigException` | config | 配置异常 |
-| `NetworkException` | network | 网络异常 |
-| `TimeoutException` | timeout | 超时异常 |
-| `DatabaseException` | database | 数据库异常 |
-
-### 2. 失败快照
-
-测试失败时自动捕获快照，保存到 `outputs/report/failure_snapshots/` 目录：
-
-```bash
-# 启用失败快照（默认）
-python3 run.py --snapshot on
-
-# 禁用失败快照
-python3 run.py --snapshot off
+# 示例3：验证字段值（正则提取）
+assert_sql:
+  check_field_value:
+    message: 断言字段值包含特定内容
+    sql: "SELECT * FROM tokens"
+    type_re: "'user_id': (.*?),"
+    expect_value: ${user_id}
+    assert_type: contains
 ```
 
-### 3. 快照内容
+### 5. 参数提取说明
 
-失败快照包含以下信息：
+目前支持从三种来源提取参数：
+- **response**：响应数据
+- **database**：数据库查询结果
+- **case**：用例数据本身
 
-| 字段 | 说明 |
-|------|------|
-| `test_id` | 测试用例ID |
-| `test_name` | 测试用例名称 |
-| `timestamp` | 失败时间 |
-| `failure_info` | 异常信息 |
-| `request_info` | 请求信息 |
-| `response_info` | 响应信息 |
-| `context_vars` | 上下文变量 |
-| `stack_trace` | 堆栈跟踪 |
-| `logs` | 日志记录 |
+支持三种提取方式：
+- `type_jsonpath`：JSONPath表达式
+- `type_re`：正则表达式
+- `type_response`：Response对象属性
 
-### 4. 使用方式
+**注意事项：**
+- 提取来源关键字（case/response/database）必须完全一致
+- 提取方式关键字（type_jsonpath/type_re/type_response）必须完全一致
+- 提取结果自动保存到全局变量GLOBAL_VARS，可在其他接口使用：`${变量名}`
 
-**方式一：自动捕获**
+#### 5.1 从响应数据提取参数
 
-测试失败时自动捕获快照，无需额外配置。
-
-**方式二：手动追踪**
-
-```python
-def test_api_with_tracking(failure_tracker):
-    """
-    使用 failure_tracker 手动记录失败信息
-    """
-    # 添加日志
-    failure_tracker["add_log"]("开始执行测试")
-    
-    # 设置上下文
-    failure_tracker["set_context"]("user_id", "12345")
-    
-    try:
-        # 执行测试...
-        pass
-    except Exception as e:
-        # 获取追踪信息
-        info = failure_tracker["get_info"]()
-        print(f"追踪信息: {info}")
-        raise
+```yaml
+extract:
+  response:
+    # JSONPath提取
+    type_jsonpath:
+      token: $.data.token
+      user_id: $.data.user.userId
+    # 正则表达式提取
+    type_re:
+      username: '"username":"(.*?)"
+    # Response对象属性提取
+    type_response:
+      status_code: response.status_code
+      cookies: response.cookies
 ```
 
-**方式三：统一异常处理**
+**提取方式说明：**
+- **JSONPath提取**：从response.json()提取，长度为1的列表自动取第一个元素
+- **正则提取**：从response.text提取，长度为1的列表自动取第一个元素
+- **Response属性提取**：获取Response对象属性值，如：
+  - `response.status_code`
+  - `response.cookies`
+  - `response.headers`
+  - `response.text`
+  - `response.is_redirect`
 
-```python
-from utils.tools.exception_handler import (
-    AssertionException,
-    RequestException,
-    handle_exception,
-    safe_execute
-)
+#### 5.2 从用例数据提取参数
 
-# 抛出自定义异常
-raise AssertionException(
-    message="断言失败：状态码不匹配",
-    expected=200,
-    actual=404,
-    assert_type="=="
-)
-
-# 统一异常处理
-try:
-    # 可能出错的代码
-    pass
-except Exception as e:
-    handle_exception(e, context={"test_id": "test_001"})
-
-# 安全执行函数
-result = safe_execute(
-    risky_function,
-    arg1, arg2,
-    default=None,
-    context={"operation": "api_call"}
-)
+```yaml
+extract:
+  case:
+    type_jsonpath:
+      case_login: $.payload.login
+    type_re:
+      case_url_key: "'url': 'https?://[^/]+/api/(.*?)/login.json'"
 ```
 
-### 5. 最佳实践
+**注意：**
+- 如果需要提取url中的参数，实际执行时的url带有域名
+- 例如：用例数据url是`/api/login.json`，执行时url是`https://example.com/api/login.json`
+- 提取表达式需要对准带有域名的url
 
-1. **使用自定义异常**：根据场景选择合适的异常类型
-2. **记录上下文**：失败时记录关键变量，便于排查
-3. **查看快照**：失败后查看快照文件，快速定位问题
-4. **统一处理**：使用 `handle_exception` 统一处理异常
+#### 5.3 从数据库提取参数
 
-## 九、Mock 接口数据服务
-
-Mock 服务用于模拟接口响应，支持多种模式，便于测试开发和调试。
-
-### 1. Mock 模式
-
-| 模式 | 说明 |
-|------|------|
-| `disabled` | 禁用 Mock（默认） |
-| `stub` | Stub 模式，只返回 Mock 数据 |
-| `record` | 记录模式，记录真实响应 |
-| `replay` | 回放模式，返回记录的响应 |
-| `mixed` | 混合模式，未匹配时请求真实接口 |
-
-### 2. 启用 Mock
-
-**方式一：命令行参数**
-
-```bash
-# Stub 模式
-python3 run.py --mock stub
-
-# Record 模式
-python3 run.py --mock record
-
-# Replay 模式
-python3 run.py --mock replay
-
-# Mixed 模式
-python3 run.py --mock mixed
+```yaml
+extract:
+  database:
+    sql: "SELECT * FROM users WHERE username='admin'"
+    type_jsonpath:
+      sql_user_id: "$[0].user_id"
+      sql_email: "$[0].email"
+    type_re:
+      sql_username: "'username': '(.*?)'"
 ```
 
-**方式二：配置文件**
+**注意：**
+- 必须有`sql`关键字
+- 查询结果为list格式（查询所有）
+- config/settings.py中的db_info必须不为空
+- 不填写提取方式：默认返回整个查询结果
+
+#### 5.4 兼容老版本写法
+
+如果未指定提取来源，框架兼容老版本写法：
+
+```yaml
+# 老版本写法（无提取来源关键字）
+extract:
+  type_jsonpath:
+    token: $.data.token
+  type_re:
+    username: '"username":"(.*?)"
+
+# 新版本写法（推荐，明确提取来源）
+extract:
+  response:
+    type_jsonpath:
+      token: $.data.token
+```
+
+### 6. 用例依赖详细说明
+
+#### 6.1 环境变量依赖（env_vars）
+
+设置环境变量，支持常量、全局变量、内置函数：
+
+```yaml
+case_dependence:
+  setup:
+    env_vars:
+      timestamp: "${generate_time('%Y%m%d%H%M%S')}"  # 使用内置函数
+      random_code: "${generate_random_str(8)}"       # 使用内置函数
+      user_login: flora                              # 直接赋值
+  teardown:
+    env_vars:
+      test_status: "completed"
+```
+
+#### 6.2 接口依赖（interface）
+
+依赖其他接口的执行结果：
+
+```yaml
+case_dependence:
+  setup:
+    interface: login_01               # 单个接口（字符串）
+  teardown:
+    interface:                        # 多个接口（列表）
+      - cleanup_01
+      - logout_01
+```
+
+**说明：**
+- interface值指向其他用例的ID
+- 支持字符串（单个）或列表（多个）
+- 依赖接口执行后的extract结果自动更新到全局变量
+
+#### 6.3 数据库依赖（database）
+
+从数据库查询并提取参数：
+
+```yaml
+case_dependence:
+  setup:
+    database:
+      sql: "SELECT * FROM users WHERE username='admin'"
+      type_jsonpath:
+        db_user_id: "$[0].user_id"
+      type_re:
+        db_username: "'username': '(.*?)'"
+  teardown:
+    database:
+      -                                # 支持列表格式（多个查询）
+        sql: "SELECT max_id FROM sequence"
+        type_jsonpath:
+          next_id: "$[0].max_id"
+      -
+        sql: "DELETE FROM test_data WHERE user_id=${db_user_id}"
+```
+
+**注意：**
+- 必须有`sql`关键字
+- config/settings.py中的db_info必须不为空
+- 支持dict（单个）或list（多个）格式
+
+### 7. 请求类型说明
+
+| 类型 | 说明 | Content-Type | 使用场景 |
+|------|------|--------------|----------|
+| `params` | URL查询参数 | - | GET请求参数，拼接到URL |
+| `json` | JSON格式请求体 | application/json | POST/PUT/PATCH请求 |
+| `data` | 表单数据 | application/x-www-form-urlencoded | 表单提交 |
+| `file` | 文件上传 | multipart/form-data | 文件上传场景 |
+| `export` | 文件下载/导出 | - | 自动保存文件到outputs/download_files/ |
+| `none` | 无请求参数 | - | 无参数的GET/DELETE请求 |
+
+### 8. Excel用例特别说明
+
+框架支持Excel多表单自动生成测试用例，每个表单作为一个测试模块。
+
+#### 8.1 Excel表单命名规则
+
+**示例：**
+- Excel文件：`test_demo.xlsx`
+- 表单1：`GitLink-登录模块`
+- 表单2：`示例模块`
+
+**生成规则：**
+
+| 规则 | 说明 | 示例 |
+|------|------|------|
+| 包含"-" | 取"-"后部分首字母+文件名 | GitLink-登录模块 → test_demo_dlmk.py |
+| 不包含"-" | 取表单名称首字母+文件名 | 示例模块 → test_demo_slmk.py |
+
+**生成的测试文件：**
+
+表单1生成的测试用例：
+- 测试模块：`test_demo_dlmk.py`
+- 测试类：`TestDemoDlmkAuto`
+- 测试方法：`test_demo_dlmk_auto`
+
+表单2生成的测试用例：
+- 测试模块：`test_demo_slmk.py`
+- 测试类：`TestDemoSlmkAuto`
+- 测试方法：`test_demo_slmk_auto`
+
+#### 8.2 Excel字段映射说明
+
+Excel表单中的列名与YAML字段对应关系：
+
+| Excel列名 | YAML字段 | 说明 |
+|-----------|---------|------|
+| 用例ID | id | 用例唯一标识 |
+| 用例标题 | title | 用例标题 |
+| 用例优先级 | severity | BLOCKER/CRITICAL/NORMAL/MINOR/TRIVIAL |
+| 请求路径 | url | 接口路径 |
+| 请求方式 | method | GET/POST/PUT/DELETE等 |
+| 请求头 | headers | JSON格式字符串 |
+| 请求cookies | cookies | JSON格式字符串 |
+| 请求数据类型 | request_type | params/json/data/file |
+| 请求参数 | payload | JSON格式字符串 |
+| 上传文件 | files | 文件路径 |
+| 响应断言 | assert_response | JSON格式字符串 |
+| 数据库断言 | assert_sql | JSON格式字符串 |
+| 后置提取 | extract | JSON格式字符串 |
+| 用例依赖 | case_dependence | JSON格式字符串 |
+| 前置等待 | wait_seconds | 数字 |
+
+**注意事项：**
+- Excel中的JSON字段需要以字符串形式填写
+- 例如headers：`{"Content-Type": "application/json"}`
+- 例如payload：`{"username": "admin", "password": "123456"}`
+
+## 六、参数提取与依赖
+
+### 1. JSONPath 提取
+
+```yaml
+extract:
+  response:
+    type_jsonpath:
+      token: $.data.token
+      user_id: $.data.user.userId
+      username: $.data.user.username
+```
+
+### 2. 正则表达式提取
+
+```yaml
+extract:
+  response:
+    type_re:
+      order_id: 'order_id=(\d+)'
+      tracking_code: 'tracking_code=([A-Z0-9]+)'
+```
+
+### 3. 用例依赖
+
+```yaml
+case_dependence:
+  setup:
+    # 方式1: 接口依赖
+    interface: login_01
+    # 方式2: 环境变量依赖
+    variables:
+      timestamp: "${generate_time('%Y%m%d%H%M%S')}"
+      random_code: "${generate_random_str(8)}"
+    # 方式3: 数据库依赖
+    database:
+      sql: "SELECT user_id FROM users WHERE username='admin'"
+      type_jsonpath:
+        user_id: "$[0].user_id"
+  teardown:
+    # 后置清理（可选）
+    variables:
+      status: "completed"
+```
+
+## 七、数据库断言
+
+### 1. 基本数据库断言
+
+```yaml
+assert_sql:
+  check_user_exists:
+    message: 断言数据库：验证用户记录存在
+    sql: "SELECT * FROM users WHERE username='admin'"
+    expect_value: 1
+    assert_type: "len_eq"
+```
+
+### 2. 数据库字段断言
+
+```yaml
+assert_sql:
+  verify_user_status:
+    message: 断言数据库：验证用户状态为激活
+    sql: "SELECT status FROM users WHERE username='admin'"
+    expect_value: "active"
+    assert_type: "=="
+    type_jsonpath: "$[0].status"
+```
+
+### 3. 数据库断言类型
+
+支持的断言类型与响应断言相同，常用：
+- `len_eq`: 验证查询结果数量
+- `==`: 验证具体字段值
+- `contains`: 验证字段包含特定值
+
+## 八、Mock 服务
+
+### 1. Mock 配置
 
 ```python
 # config/settings.py
 MOCK_CONFIG = {
     "enabled": True,
-    "mode": "stub",
+    "mode": "disabled",  # disabled, stub, record, replay, mixed
     "recordings_dir": "outputs/mock_recordings",
     "auto_save": True,
     "default_delay": 0.0,
 }
 ```
 
-### 3. 使用方式
+### 2. Mock 模式说明
 
-**方式一：使用 fixture 动态添加规则**
-
-```python
-def test_with_mock(mock_rule):
-    """
-    使用 mock_rule fixture 动态添加 Mock 规则
-    """
-    # 添加 Mock 规则
-    mock_rule(
-        name="login_api",
-        url_pattern=r"/api/login",
-        response={"code": 0, "data": {"token": "mock_token"}},
-        method="POST"
-    )
-    
-    # 执行测试，请求会被 Mock 拦截
-    # ...
-```
-
-**方式二：使用装饰器**
-
-```python
-from utils.tools.mock_service import mock_response
-
-@mock_response(
-    url_pattern=r"/api/user",
-    response={"code": 0, "data": {"name": "test"}}
-)
-def test_user_api():
-    """
-    使用装饰器添加 Mock 规则
-    """
-    # ...
-```
-
-**方式三：直接使用 Mock 服务**
-
-```python
-from utils.tools.mock_service import get_mock_service
-from utils.tools.mock_templates import MockTemplates
-
-def test_direct_mock():
-    """
-    直接使用 Mock 服务
-    """
-    mock_service = get_mock_service()
-    
-    # 添加 Mock 规则
-    mock_service.add_stub(
-        name="get_user",
-        url_pattern=r"/api/user/\d+",
-        response=MockTemplates.user(user_id=1),
-        method="GET"
-    )
-    
-    # 执行测试...
-```
-
-### 4. Mock 数据模板
-
-框架提供常用的 Mock 数据模板：
-
-| 模板 | 说明 |
+| 模式 | 说明 |
 |------|------|
-| `user` | 用户数据 |
-| `users` | 用户列表 |
-| `product` | 商品数据 |
-| `products` | 商品列表 |
-| `order` | 订单数据 |
-| `orders` | 订单列表 |
-| `article` | 文章数据 |
-| `token` | Token 数据 |
-| `success` | 成功响应 |
-| `error` | 错误响应 |
-| `login_success` | 登录成功响应 |
-| `api_response` | 标准 API 响应 |
+| `disabled` | 禁用 Mock，发送真实请求 |
+| `stub` | 使用预定义的 Mock 响应 |
+| `record` | 录制真实响应并保存 |
+| `replay` | 使用录制的响应，不发送真实请求 |
+| `mixed` | 混合模式：有录制就用录制，否则发送真实请求并录制 |
 
-**使用示例：**
-
-```python
-from utils.tools.mock_templates import MockTemplates, create_mock_data
-
-# 方式一：直接使用模板类
-user = MockTemplates.user(user_id=1)
-users = MockTemplates.users(count=10)
-login = MockTemplates.login_success()
-
-# 方式二：使用工厂函数
-user = create_mock_data("user", user_id=1)
-products = create_mock_data("products", count=5)
-
-# 方式三：生成分页数据
-items = MockTemplates.users(50)
-paged = MockTemplates.pagination(items, page=1, page_size=10)
-```
-
-### 5. Mock 配置自动生成
-
-框架支持从 YAML 用例或 OpenAPI 文档自动生成 Mock 配置。
-
-**命令行工具：**
+### 3. 运行时切换 Mock 模式
 
 ```bash
-# 从 YAML 用例目录生成 Mock 配置
-python3 utils/tools/generate_mock.py yaml --dir interfaces/projects/workspace --project workspace
+# 使用 Stub 模式
+python run.py --mock stub
 
-# 从单个 YAML 文件生成 Mock 配置
-python3 utils/tools/generate_mock.py yaml --file interfaces/projects/workspace/test_login.yaml --project workspace
+# 使用 Record 模式录制响应
+python run.py --mock record
 
-# 从 OpenAPI 文档生成 Mock 配置
-python3 utils/tools/generate_mock.py openapi --file api.json --project myproject
+# 使用 Replay 模式回放录制
+python run.py --mock replay
 ```
 
-**参数说明：**
+## 九、日志管理
 
-| 参数 | 说明 |
-|------|------|
-| `--file, -f` | 文件路径（YAML 用例或 OpenAPI 文档） |
-| `--dir, -d` | YAML 用例目录 |
-| `--project, -p` | 项目名称 |
-| `--output, -o` | 输出目录（默认为项目目录） |
-
-**生成的配置文件：**
+### 1. 日志级别配置
 
 ```python
-# interfaces/projects/workspace/workspace_mock_config.py
-from utils.tools.mock_service import MockRule, MockResponse
-
-def get_workspace_mock_rules():
-    """获取 workspace 项目的 Mock 规则"""
-    rules = []
-    
-    # 账号密码登录
-    workspace_login_01_rule = MockRule(
-        name="workspace_login_01",
-        url_pattern=r"/api/crm/v4/user/login",
-        method="POST",
-        response_builder=build_workspace_login_01_response,
-        delay=0.1,
-        priority=10
-    )
-    rules.append(workspace_login_01_rule)
-    
-    return rules
-
-def build_workspace_login_01_response(url: str, method: str, **kwargs) -> MockResponse:
-    """构建 账号密码登录 Mock 响应"""
-    response_data = {
-        "code": 200,
-        "message": "success",
-        "data": {
-            "token": "mock_token_xxx",
-            "openid": "mock_openid_xxx"
-        }
-    }
-    return MockResponse(
-        status_code=200,
-        headers={'Content-Type': 'application/json;charset=utf-8'},
-        body=response_data,
-        elapsed=0.15
-    )
+# config/settings.py
+LOG_LEVEL = "DEBUG"      # 文件日志级别
+LOG_LEVEL_STD = "DEBUG"  # 控制台日志级别
 ```
 
-**使用生成的 Mock 配置：**
+### 2. 支持的日志级别
+
+| 级别 | 说明 | 使用场景 |
+|------|------|----------|
+| `TRACE` | 详细追踪 | 提取结果、跳过处理、调试信息 |
+| `DEBUG` | 调试信息 | 请求/响应详情、数据处理 |
+| `INFO` | 关键信息 | 用例执行、重要事件 |
+| `SUCCESS` | 成功标记 | 测试通过、执行完成 |
+| `WARNING` | 警告信息 | 格式错误、配置缺失、潜在问题 |
+| `ERROR` | 错误信息 | 异常情况、断言失败 |
+| `CRITICAL` | 严重错误 | 程序崩溃、致命错误 |
+
+### 3. 日志文件位置
+
+- 文件日志：`outputs/log/api.log`
+- 错误日志：`outputs/log/error.log`
+
+## 十、通知机制
+
+### 1. 通知类型配置
 
 ```python
-# conftest.py 或测试文件中
-from interfaces.projects.workspace.workspace_mock_config import get_workspace_mock_rules
-
-def pytest_configure(config):
-    """注册 Mock 规则"""
-    mock_service = get_mock_service()
-    for rule in get_workspace_mock_rules():
-        mock_service.add_rule(rule)
+# config/settings.py
+SEND_RESULT_TYPE = 0  # 0:不发送, 1:钉钉, 2:企业微信, 3:邮件, 4:全部
 ```
 
-### 6. 高级用法
-
-**自定义响应构建器：**
-
-```python
-from utils.tools.mock_service import MockRule, get_mock_service
-
-def custom_response(url, method, **kwargs):
-    """自定义响应构建函数"""
-    payload = kwargs.get("payload", {})
-    return {
-        "status_code": 200,
-        "body": {
-            "code": 0,
-            "message": "success",
-            "data": {"id": payload.get("user_id", 1)}
-        }
-    }
-
-mock_service = get_mock_service()
-rule = MockRule(
-    name="custom_rule",
-    url_pattern=r"/api/custom",
-    response_builder=custom_response
-)
-mock_service.add_rule(rule)
-```
-
-**请求匹配器：**
-
-```python
-def request_matcher(url, method, payload=None, **kwargs):
-    """自定义请求匹配函数"""
-    if method != "POST":
-        return False
-    if payload and payload.get("type") == "special":
-        return True
-    return False
-
-rule = MockRule(
-    name="conditional_mock",
-    request_matcher=request_matcher,
-    response_builder={"status_code": 200, "body": {"matched": True}}
-)
-```
-
-### 7. 最佳实践
-
-1. **开发阶段使用 Stub 模式**：快速开发，不依赖真实接口
-2. **调试阶段使用 Record 模式**：记录真实响应，便于分析
-3. **离线测试使用 Replay 模式**：回放记录的响应，无需网络
-4. **使用数据模板**：快速生成测试数据
-5. **规则命名清晰**：便于管理和调试
-6. **自动生成 Mock 配置**：从 YAML 用例自动生成，减少手动编写
-7. **Mock 数据与断言一致**：生成的 Mock 数据应与用例断言的预期值一致
-
-## 十、多项目支持
-
-框架支持多项目并行管理，不同项目的测试用例存放在独立目录中。
-
-### 1. 项目目录结构
-
-```
-interfaces/
-├── projects/                    # 项目目录
-│   ├── workspace/              # 项目1：workspace
-│   │   ├── test_login.yaml
-│   │   ├── test_crm.xlsx
-│   │   └── init_data.yaml
-│   ├── crm/                    # 项目2：crm
-│   │   ├── test_user.yaml
-│   │   └── test_order.xlsx
-│   └── erp/                    # 项目3：erp
-│       └── test_api.yaml
-└── test_common.yaml            # 公共用例（可选）
-```
-
-### 2. 运行方式
-
-**运行所有项目：**
-
-```bash
-# 自动扫描 projects 目录下所有项目
-python3 run.py -env test
-```
-
-**运行指定项目：**
-
-```bash
-# 运行单个项目
-python3 run.py -env test -project workspace
-
-# 运行多个项目（逗号分隔）
-python3 run.py -env test -project workspace,crm
-```
-
-### 3. 生成的用例结构
-
-不同项目的测试用例会生成到独立目录：
-
-```
-testcases/
-└── test_auto_case/
-    ├── yaml_case/
-    │   ├── workspace/          # workspace 项目的 YAML 用例
-    │   │   └── test_yaml_login.py
-    │   ├── crm/                # crm 项目的 YAML 用例
-    │   │   └── test_yaml_user.py
-    │   └── erp/                # erp 项目的 YAML 用例
-    │       └── test_yaml_api.py
-    └── excel_case/
-        ├── workspace/          # workspace 项目的 Excel 用例
-        │   └── test_excel_crm.py
-        └── crm/                # crm 项目的 Excel 用例
-            └── test_excel_order.py
-```
-
-### 4. 项目配置
-
-可在 `config/settings.py` 中配置项目信息：
-
-```python
-PROJECT_CONFIG = {
-    "enabled": True,
-    "default_project": None,
-    "projects": {
-        "workspace": {
-            "description": "统一工作台项目",
-            "env": "test"
-        },
-        "crm": {
-            "description": "客户管理系统",
-            "env": "test"
-        }
-    }
-}
-```
-### 6. 最佳实践
-
-1. **项目隔离**：每个项目使用独立目录，避免用例冲突
-2. **命名规范**：项目目录名使用小写字母和下划线
-3. **公共用例**：公共用例可放在 `interfaces/` 根目录
-4. **环境配置**：每个项目可配置独立的测试环境
-
-## 十一、Excel 模板与示例
-
-### 1. 字段规范（列名）
-| 字段 | 说明 |
-|------|------|
-| id | 用例唯一标识，必须以非空字符串填写 |
-| title | 用例标题（展示与报告） |
-| severity | 用例等级：NORMAL/TRIVIAL/MINOR/CRITICAL/BLOCKER |
-| url | 接口路径，如 /api/crm/v4/user/login |
-| run | 是否执行，True/False（为 False 时将被跳过） |
-| method | 请求方法：GET/POST/PUT/DELETE 等 |
-| headers | 请求头，建议 JSON 字符串或字典字面量 |
-| cookies | Cookie 配置（可空） |
-| request_type | 请求体类型：JSON/FORM/FILE 等 |
-| payload | 请求体，支持字典或 JSON 字符串 |
-| files | 文件上传（可空） |
-| wait_seconds | 请求前等待时间（秒）（可空） |
-| validate | 断言规则 |
-| extract | 参数提取，如 `{'token': '$.data.token'}` |
-| case_dependence | 用例依赖，包含 setup/teardown（可空） |
-| markers | 用例标记，如 `login`、`smoke` |
-
-### 2. 断言写法规范（validate）
-```json
-{
-  "status_code": 200,
-  "assert_ret": { "type_jsonpath": "$.ret", "expect_value": 0, "assert_type": "==" },
-  "assert_user": { "type_jsonpath": "$.data.user.username", "expect_value": "admin", "assert_type": "==" }
-}
-```
-
-**支持的断言类型：**
-`==`, `not_eq`, `gt`, `ge`, `lt`, `le`, `contains`, `str_eq`, `len_eq`, `len_gt`, `len_ge`, `len_lt`, `len_le`, `contained_by`, `startswith`, `endswith`
-
-### 3. 依赖场景示例
-```json
-{
-  "setup": { "interface": "login_01" },
-  "teardown": null
-}
-```
-
-### 4. Excel 用例依赖说明
-**重要**：Excel 用例之间的依赖目前不支持，Excel 用例需要依赖 YAML 文件中的用例。
-
-```json
-// 错误示例：Excel 用例依赖另一个 Excel 用例（不支持）
-{
-  "setup": { "interface": "case_login_excel_01" }
-}
-
-// 正确示例：Excel 用例依赖 YAML 用例
-{
-  "setup": { "interface": "login_01" }
-}
-```
-
-### 5. 字段映射说明
-Excel 列名与内部字段的映射关系：
-
-| Excel 列名 | 内部字段 | 说明 |
-|------------|----------|------|
-| `assert_response` | `validate` | 响应断言规则 |
-| `extract` | `extract` | 参数提取配置 |
-| `case_dependence` | `case_dependence` | 用例依赖配置 |
-
-**注意**：`extract` 和 `assert_response` 两列不要填反：
-- `extract`：填写需要从响应中提取的参数，如 `{"token": "$.data.token"}`
-- `assert_response`：填写断言规则，如 `{"status_code": 200, "assert_code": {...}}`
-
-## 十二、复杂场景测试示例
-
-本章节展示框架支持的各种复杂测试场景，帮助您应对实际业务中的多样化测试需求。
-
-### 1. 多步骤业务流程测试
-
-模拟完整的业务流程，通过用例依赖实现多步骤串联。
-
-**场景：电商订单完整流程（登录 → 添加购物车 → 创建订单 → 支付 → 查询订单状态）**
+### 2. 钉钉通知
 
 ```yaml
-case_common:
-  allure_epic: 电商平台
-  allure_feature: 订单模块
-  allure_story: 订单完整流程
-  case_markers: ['order', 'p0', 'workflow']
-
-case_info:
-  # 步骤1：用户登录，提取token和用户ID
-  - id: workflow_login_01
-    title: 用户登录获取凭证
-    url: /api/user/login
-    method: POST
-    headers:
-      Content-Type: application/json
-    request_type: json
-    payload:
-      username: ${username}
-      password: ${password}
-    extract:
-      response:
-        type_jsonpath:
-          token: $.data.token
-          user_id: $.data.user.id
-          cart_session: $.data.cart_session_id
-    assert_response:
-      status_code: 200
-      assert_code:
-        type_jsonpath: "$.code"
-        expect_value: 0
-        assert_type: "=="
-
-  # 步骤2：添加商品到购物车（依赖登录）
-  - id: workflow_add_cart_01
-    title: 添加商品到购物车
-    url: /api/cart/add
-    method: POST
-    headers:
-      Content-Type: application/json
-      Authorization: Bearer ${token}
-    request_type: json
-    payload:
-      user_id: ${user_id}
-      product_id: 10001
-      quantity: 2
-      cart_session: ${cart_session}
-    case_dependence:
-      setup:
-        interface: workflow_login_01
-    extract:
-      response:
-        type_jsonpath:
-          cart_item_id: $.data.item_id
-          total_price: $.data.total_price
-    assert_response:
-      status_code: 200
-      assert_quantity:
-        type_jsonpath: "$.data.quantity"
-        expect_value: 2
-        assert_type: "=="
-
-  # 步骤3：创建订单（依赖添加购物车）
-  - id: workflow_create_order_01
-    title: 创建订单
-    url: /api/order/create
-    method: POST
-    headers:
-      Authorization: Bearer ${token}
-    request_type: json
-    payload:
-      user_id: ${user_id}
-      cart_item_ids: ["${cart_item_id}"]
-      address_id: 1
-      payment_method: alipay
-    case_dependence:
-      setup:
-        interface: [workflow_login_01, workflow_add_cart_01]
-    extract:
-      response:
-        type_jsonpath:
-          order_id: $.data.order_id
-          order_no: $.data.order_no
-          pay_amount: $.data.pay_amount
-    assert_response:
-      status_code: 200
-      assert_status:
-        type_jsonpath: "$.data.status"
-        expect_value: "pending_payment"
-        assert_type: "=="
-
-  # 步骤4：模拟支付（依赖创建订单）
-  - id: workflow_pay_order_01
-    title: 订单支付
-    url: /api/order/pay
-    method: POST
-    headers:
-      Authorization: Bearer ${token}
-    request_type: json
-    payload:
-      order_id: ${order_id}
-      order_no: ${order_no}
-      pay_amount: ${pay_amount}
-      payment_method: alipay
-      transaction_id: "ALI_${generate_time('%Y%m%d%H%M%S')}_${generate_random_int(1000,9999)}"
-    case_dependence:
-      setup:
-        interface: workflow_create_order_01
-    extract:
-      response:
-        type_jsonpath:
-          payment_id: $.data.payment_id
-          paid_time: $.data.paid_time
-    assert_response:
-      status_code: 200
-      assert_pay_status:
-        type_jsonpath: "$.data.pay_status"
-        expect_value: "success"
-        assert_type: "=="
-
-  # 步骤5：查询订单状态验证（依赖支付）
-  - id: workflow_query_order_01
-    title: 查询订单状态
-    url: /api/order/detail
-    method: GET
-    headers:
-      Authorization: Bearer ${token}
-    request_type: params
-    payload:
-      order_id: ${order_id}
-    case_dependence:
-      setup:
-        interface: workflow_pay_order_01
-    assert_response:
-      status_code: 200
-      assert_order_status:
-        type_jsonpath: "$.data.status"
-        expect_value: "paid"
-        assert_type: "=="
-      assert_paid_time:
-        type_jsonpath: "$.data.paid_time"
-        expect_value: "${paid_time}"
-        assert_type: "=="
-    # 数据库断言：验证订单状态已更新
-    assert_sql:
-      - sql: "SELECT status FROM orders WHERE order_id='${order_id}'"
-        expect_value: "paid"
-        assert_type: "=="
+# .env
+DINGTALK_WEBHOOK=https://oapi.dingtalk.com/robot/send?access_token=xxx
+DINGTALK_SECRET=SECxxx
 ```
 
-### 2. 文件上传与下载测试
-
-框架支持文件上传和下载操作，适用于报表导出、附件上传等场景。
-
-**场景一：文件上传测试**
+### 3. 企业微信通知
 
 ```yaml
-case_common:
-  allure_epic: 文件管理
-  allure_feature: 文件操作
-  allure_story: 文件上传
-  case_markers: ['file', 'upload']
-
-case_info:
-  - id: file_upload_01
-    title: 上传单个文件
-    url: /api/file/upload
-    method: POST
-    headers:
-      Authorization: Bearer ${token}
-    request_type: file
-    payload: file  # 文件字段名
-    files: files/test_image.png  # 文件路径，相对于 files/ 目录
-    extract:
-      response:
-        type_jsonpath:
-          file_id: $.data.file_id
-          file_url: $.data.url
-    assert_response:
-      status_code: 200
-      assert_file_id:
-        type_jsonpath: "$.data.file_id"
-        expect_value: null
-        assert_type: "!="
-
-  - id: file_upload_multiple_01
-    title: 批量上传多个文件（手动编写的测试用例）
-    run: True
-    severity: normal
+# .env
+WECHAT_WEBHOOK=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
 ```
 
-**手动编写批量上传测试用例示例：**
+### 4. 邮件通知
+
+```yaml
+# .env
+EMAIL_USER=your_email@example.com
+EMAIL_PASSWORD=your_email_password
+EMAIL_HOST=smtp.example.com
+EMAIL_TO_LIST=user1@example.com,user2@example.com
+```
+
+## 十一、数据清理策略
+
+### 1. 配置数据清理
 
 ```python
-# testcases/test_manual_case/test_file_upload.py
-import pytest
-import os
-from config.settings import FILES_DIR, GLOBAL_VARS
-from core.requests_utils.base_request import BaseRequest
-
-@pytest.mark.file
-@pytest.mark.upload
-def test_batch_upload_files():
-    """
-    批量上传多个文件测试
-    """
-    token = GLOBAL_VARS.get("token")
-    upload_url = GLOBAL_VARS.get("host") + "/api/file/batch-upload"
-    
-    # 获取 files 目录下所有图片文件
-    files_dir = FILES_DIR
-    image_files = [f for f in os.listdir(files_dir) if f.endswith(('.png', '.jpg', '.jpeg'))]
-    
-    uploaded_ids = []
-    
-    for image_file in image_files[:5]:  # 上传前5个文件
-        file_path = os.path.join(files_dir, image_file)
-        
-        req_data = {
-            "url": upload_url,
-            "method": "POST",
-            "headers": {"Authorization": f"Bearer {token}"},
-            "request_type": "file",
-            "payload": "files",
-            "files": file_path
-        }
-        
-        response = BaseRequest.send_request(req_data)
-        
-        assert response.status_code == 200
-        file_id = response.json().get("data", {}).get("file_id")
-        if file_id:
-            uploaded_ids.append(file_id)
-    
-    # 验证所有文件上传成功
-    assert len(uploaded_ids) == min(5, len(image_files))
-    
-    # 保存上传的文件ID供后续使用
-    GLOBAL_VARS["uploaded_file_ids"] = uploaded_ids
-```
-
-**场景二：文件下载/导出测试**
-
-```yaml
-case_common:
-  allure_epic: 报表管理
-  allure_feature: 数据导出
-  allure_story: Excel导出
-  case_markers: ['export', 'report']
-
-case_info:
-  - id: report_export_01
-    title: 导出销售报表
-    url: /api/report/export
-    method: POST
-    headers:
-      Authorization: Bearer ${token}
-      Content-Type: application/json
-    request_type: export  # 使用 export 类型自动下载文件
-    payload:
-      report_type: sales
-      date_range:
-        start_date: "${generate_time('%Y-%m-%d', days=-30)}"
-        end_date: "${generate_time('%Y-%m-%d')}"
-      format: excel
-    case_dependence:
-      setup:
-        interface: workflow_login_01
-    assert_response:
-      status_code: 200
-      # 文件下载后自动保存到 outputs/download_files/ 目录
-```
-
-### 3. 数据库断言与数据清理
-
-测试数据库操作后验证数据正确性，并在测试完成后自动清理测试数据。
-
-**场景：创建用户并验证数据库记录**
-
-```yaml
-case_common:
-  allure_epic: 用户管理
-  allure_feature: 用户 CRUD
-  allure_story: 用户创建与验证
-  case_markers: ['user', 'database', 'cleanup']
-
-case_info:
-  - id: db_user_create_01
-    title: 创建用户并验证数据库
-    url: /api/user/create
-    method: POST
-    headers:
-      Authorization: Bearer ${token}
-      Content-Type: application/json
-    request_type: json
-    payload:
-      username: "test_${generate_name(lan='zh')}"
-      email: "${generate_email(lan='zh')}"
-      phone: "${generate_phone(lan='zh')}"
-      department: "${generate_company_name(lan='zh')}"
-      # 使用时间戳确保唯一性
-      create_time: "${generate_time('%Y-%m-%d %H:%M:%S')}"
-    case_dependence:
-      setup:
-        interface: workflow_login_01
-    extract:
-      response:
-        type_jsonpath:
-          new_user_id: $.data.user_id
-          new_username: $.data.username
-    assert_response:
-      status_code: 200
-      assert_code:
-        type_jsonpath: "$.code"
-        expect_value: 0
-        assert_type: "=="
-    # 数据库断言：验证用户数据已正确写入
-    assert_sql:
-      - sql: "SELECT username, email FROM users WHERE user_id='${new_user_id}'"
-        expect_value:
-          username: "${new_username}"
-          email: "${generate_email(lan='zh')}"
-        assert_type: "=="
-      # 验证用户状态为激活状态
-      - sql: "SELECT status FROM users WHERE user_id='${new_user_id}'"
-        expect_value: "active"
-        assert_type: "=="
-
-  - id: db_user_update_01
-    title: 更新用户信息并验证数据库
-    url: /api/user/update
-    method: PUT
-    headers:
-      Authorization: Bearer ${token}
-    request_type: json
-    payload:
-      user_id: ${new_user_id}
-      department: "研发部"
-      role: "engineer"
-    case_dependence:
-      setup:
-        interface: db_user_create_01
-    assert_sql:
-      - sql: "SELECT department, role FROM users WHERE user_id='${new_user_id}'"
-        expect_value:
-          department: "研发部"
-          role: "engineer"
-        assert_type: "=="
-```
-
-**数据清理配置（settings.py）：**
-
-```python
+# config/settings.py
 DATA_CLEANUP_CONFIG = {
     "enabled": True,
     "databases": {
         "default": {
             "host": "${DB_HOST}",
             "port": 3306,
-            "user": "root",
-            "password": "${DB_PWD}",
-            "database": "test_db",
-            "ssh": False
+            "user": "${DB_USER}",
+            "password": "${DB_PASSWORD}",
+            "database": "${DB_NAME}",
         }
     },
     "cleanup_on_failure": True,
-    "cleanup_on_success": True
+    "cleanup_on_success": True,
 }
 ```
 
-**手动数据清理示例（Python测试用例）：**
+### 2. 清理策略类型
+
+| 策略 | 适用场景 | 说明 |
+|------|----------|------|
+| 注册清理 | 需精确控制时机 | 手动注册清理任务 |
+| 快照恢复 | 保持数据原状 | 自动恢复测试数据 |
+| 手动控制 | 复杂测试场景 | 完全手动管理 |
+
+## 十二、失败快照
+
+### 1. 启用失败快照
+
+```bash
+# 启用（默认）
+python run.py --snapshot on
+
+# 禁用
+python run.py --snapshot off
+```
+
+### 2. 快照内容
+
+失败快照保存在 `outputs/report/failure_snapshots/`，包含：
+- 失败时间戳
+- 用例 ID 和标题
+- 异常类型和堆栈
+- 全局变量状态
+- 请求/响应数据
+
+## 十三、gRPC 接口测试
+
+### 1. Proto 文件定义
+
+```protobuf
+syntax = "proto3";
+package user;
+
+message LoginRequest {
+    string username = 1;
+    string password = 2;
+}
+
+message LoginResponse {
+    int32 code = 1;
+    string message = 2;
+    string token = 3;
+}
+
+service UserService {
+    rpc Login(LoginRequest) returns (LoginResponse);
+}
+```
+
+### 2. 自动生成测试用例
 
 ```python
-# testcases/test_manual_case/test_user_cleanup.py
-import pytest
-from utils.database_utils.mysql_handle import MysqlServer
-from config.settings import GLOBAL_VARS
+from utils.yaml_case_maker.grpc_for_yaml import GrpcForYaml
 
-@pytest.mark.user
-@pytest.mark.cleanup
-def test_user_with_cleanup(data_cleanup):
-    """
-    创建测试用户，测试完成后自动清理
-    """
-    # 注册清理任务
-    test_username = f"cleanup_test_{int(time.time())}"
-    
-    # 创建用户（API调用）
-    # ...
-    
-    # 注册清理SQL
-    data_cleanup.register_cleanup(
-        test_id="test_user_cleanup",
-        cleanup_sql=f"DELETE FROM users WHERE username='{test_username}'",
-        db_name="default"
-    )
-    
-    # 执行测试验证...
-    # 测试结束后自动执行清理SQL
+grpc_parser = GrpcForYaml(
+    case_dir="./interfaces/projects/user_service",
+    proto_path="./protos/user.proto"
+)
+grpc_parser.yaml_file_dump()
 ```
 
-### 4. 动态参数生成（Faker 数据）
+### 3. 生成的 YAML 用例
 
-框架集成 Faker 库，支持生成随机测试数据，适用于参数化测试和数据驱动测试。
-
-**可用的 Faker 方法：**
-
-| 方法 | 说明 | 示例 |
-|------|------|------|
-| `generate_name(lan='zh')` | 生成姓名 | `${generate_name(lan='zh')}` → 张三 |
-| `generate_email(lan='zh')` | 生成邮箱 | `${generate_email()}` → test@example.com |
-| `generate_phone(lan='zh')` | 生成手机号 | `${generate_phone(lan='zh')}` → 13812345678 |
-| `generate_id_number(lan='zh')` | 生成身份证号 | `${generate_id_number(lan='zh')}` |
-| `generate_company_name(lan='zh')` | 生成公司名 | `${generate_company_name(lan='zh')}` → 阿里巴巴 |
-| `generate_address(lan='zh')` | 生成地址 | `${generate_address(lan='zh')}` |
-| `generate_city(lan='zh')` | 生成城市 | `${generate_city(lan='zh')}` → 北京市 |
-| `generate_random_int(min, max)` | 生成随机整数 | `${generate_random_int(1, 100)}` |
-| `generate_time(fmt, days)` | 生成时间 | `${generate_time('%Y-%m-%d', days=7)}` |
-| `generate_identifier(char_len)` | 生成标识符 | `${generate_identifier(8)}` |
-
-**场景：使用 Faker 生成完整用户注册信息**
+工具自动将 gRPC 转换为 HTTP 格式（通过 gRPC-Gateway）：
 
 ```yaml
-case_common:
-  allure_epic: 注册模块
-  allure_feature: 用户注册
-  allure_story: Faker数据驱动
-  case_markers: ['register', 'faker', 'p1']
-
 case_info:
-  - id: faker_register_01
-    title: 使用Faker数据注册用户
-    url: /api/user/register
-    method: POST
-    headers:
-      Content-Type: application/json
-    request_type: json
-    payload:
-      # 使用Faker生成随机测试数据
-      username: "user_${generate_identifier(8)}"
-      password: "${generate_random_int(100000, 999999)}"
-      real_name: "${generate_name(lan='zh')}"
-      email: "${generate_email(lan='zh')}"
-      phone: "${generate_phone(lan='zh')}"
-      id_card: "${generate_id_number(lan='zh')}"
-      company: "${generate_company_name(lan='zh')}"
-      province: "${generate_province(lan='zh')}"
-      city: "${generate_city(lan='zh')}"
-      address: "${generate_address(lan='zh')}"
-      # 动态时间
-      register_time: "${generate_time('%Y-%m-%d %H:%M:%S')}"
-      expire_time: "${generate_time('%Y-%m-%d', days=365)}"
-    extract:
-      response:
-        type_jsonpath:
-          registered_user_id: $.data.user_id
-          registered_username: $.data.username
-    assert_response:
-      status_code: 200
-      assert_code:
-        type_jsonpath: "$.code"
-        expect_value: 0
-        assert_type: "=="
-      # 验证返回的用户名与提交的一致
-      assert_username:
-        type_jsonpath: "$.data.username"
-        expect_value: "${registered_username}"
-        assert_type: "=="
+- id: Login_01
+  title: 测试 Login
+  url: /user.UserService/Login  # HTTP URL
+  method: POST                   # POST 方法
+  headers:
+    Content-Type: application/json
+  request_type: json
+  payload:
+    username: string_value
+    password: string_value
+  assert_response:
+    status_code: 200
 ```
 
-### 5. 多重依赖与依赖链
+### 4. 配置 gRPC-Gateway
 
-支持多种依赖类型：接口依赖、环境变量依赖、数据库依赖。
+**方式一：gRPC-Gateway**
 
-**场景：复杂依赖链（环境变量 → 接口 → 数据库）**
+```bash
+# 安装
+go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+
+# 生成反向代理
+protoc -I . --grpc-gateway_out ./gateway user.proto
+```
+
+**方式二：Envoy 配置**
 
 ```yaml
-case_common:
-  allure_epic: 综合测试
-  allure_feature: 依赖管理
-  allure_story: 多重依赖
-  case_markers: ['dependence', 'complex']
-
-case_info:
-  - id: complex_dependence_01
-    title: 多重依赖测试
-    url: /api/order/verify
-    method: POST
-    headers:
-      Authorization: Bearer ${token}
-      Content-Type: application/json
-    request_type: json
-    payload:
-      order_id: ${order_id}
-      verify_code: ${verify_code}
-      user_balance: ${user_balance}
-    case_dependence:
-      setup:
-        # 环境变量依赖：设置初始变量
-        variables:
-          verify_code: "${generate_random_int(1000, 9999)}"
-          request_time: "${generate_time('%Y-%m-%d %H:%M:%S')}"
-        # 接口依赖：先执行登录和创建订单
-        interface: [workflow_login_01, workflow_create_order_01]
-        # 数据库依赖：查询用户余额
-        database:
-          - sql: "SELECT balance FROM user_account WHERE user_id='${user_id}'"
-            type_jsonpath:
-              user_balance: $.0.balance
-    extract:
-      response:
-        type_jsonpath:
-          verify_result: $.data.result
-    assert_response:
-      status_code: 200
-      assert_result:
-        type_jsonpath: "$.data.result"
-        expect_value: "success"
-        assert_type: "=="
+http_filters:
+- name: envoy.filters.http.grpc_json_transcoder
+  config:
+    proto_descriptor: "/path/to/api.pb"
+    services: ["user.UserService"]
 ```
 
-### 6. 正则表达式提取
+### 5. 运行 gRPC 测试
 
-适用于从响应文本、Cookie值等非JSON结构中提取数据。
-
-**场景：从响应头或HTML内容中提取数据**
-
-```yaml
-case_common:
-  allure_epic: 认证模块
-  allure_feature: OAuth认证
-  allure_story: 正则提取
-  case_markers: ['regex', 'oauth']
-
-case_info:
-  - id: regex_extract_01
-    title: OAuth认证并提取授权码
-    url: /api/oauth/authorize
-    method: GET
-    headers:
-      Authorization: Bearer ${token}
-    request_type: params
-    payload:
-      client_id: ${client_id}
-      redirect_uri: ${redirect_uri}
-      response_type: code
-    extract:
-      response:
-        # JSONPath提取
-        type_jsonpath:
-          auth_state: $.data.state
-      # 正则表达式提取（从响应文本中）
-      type_re:
-        # 从重定向URL中提取授权码
-        auth_code: "code=(\w+)"
-        # 从响应中提取session_id
-        session_id: "session_id=([a-f0-9]+)"
-    assert_response:
-      status_code: 200
-
-  - id: regex_cookie_01
-    title: 从Cookie中提取Session ID
-    url: /api/user/session
-    method: POST
-    headers:
-      Content-Type: application/json
-    request_type: json
-    payload:
-      username: ${username}
-    extract:
-      response:
-        # 从Response对象提取Cookie
-        type_response:
-          cookies: response.cookies
-        # 正则提取Cookie中的session值
-        type_re:
-          session_token: "session=(\w+)"
-    assert_response:
-      status_code: 200
+```bash
+# 运行 gRPC-HTTP 测试
+python run.py -env test -m "grpc_http"
 ```
 
-### 7. SSH 隧道数据库连接
+### 6. 字段类型映射
 
-通过 SSH 隧道连接远程数据库，适用于生产环境或安全隔离环境。
+| Proto 类型 | JSON 默认值 |
+|-----------|------------|
+| string | "string_value" |
+| int32/int64 | 0 |
+| float/double | 0.0 |
+| bool | false |
+| repeated | [value] |
+| message | {...} |
 
-**配置示例（settings.py 或环境配置文件）：**
+## 十四、定时任务
 
-```yaml
-# config/prod.yaml
-db_info:
-  db_host: 10.0.0.100  # 内网数据库IP
-  db_port: 3306
-  db_user: readonly
-  db_pwd: ${PROD_DB_PWD}
-  db_database: prod_db
-  # SSH隧道配置
-  ssh: true
-  ssh_config:
-    ssh_host: ssh.jumpserver.com  # SSH跳板机
-    ssh_port: 22
-    ssh_user: autotest
-    ssh_pwd: ${SSH_PWD}
-```
-
-**测试用例示例：**
-
-```yaml
-case_common:
-  allure_epic: 生产验证
-  allure_feature: 数据验证
-  allure_story: SSH隧道连接
-  case_markers: ['ssh', 'prod', 'critical']
-
-case_info:
-  - id: ssh_db_verify_01
-    title: 通过SSH隧道验证生产数据
-    url: /api/order/query
-    method: GET
-    headers:
-      Authorization: Bearer ${prod_token}
-    request_type: params
-    payload:
-      order_no: "ORD202401150001"
-    # 通过SSH隧道进行数据库断言
-    assert_sql:
-      - sql: "SELECT status, amount FROM orders WHERE order_no='ORD202401150001'"
-        expect_value:
-          status: "completed"
-          amount: 299.00
-        assert_type: "=="
-```
-
-### 8. Cookie/Session 管理
-
-框架自动管理 Session 会话，支持 Cookie 提取和传递。
-
-**场景：Cookie 自动传递与验证**
-
-```yaml
-case_common:
-  allure_epic: 会话管理
-  allure_feature: Cookie管理
-  allure_story: Session持久化
-  case_markers: ['cookie', 'session']
-
-case_info:
-  # 登录获取Cookie
-  - id: cookie_login_01
-    title: 登录并获取Cookie
-    url: /api/auth/login
-    method: POST
-    headers:
-      Content-Type: application/json
-    request_type: json
-    payload:
-      username: ${username}
-      password: ${password}
-    extract:
-      response:
-        # 提取整个Cookie对象
-        type_response:
-          login_cookies: response.cookies
-        # JSONPath提取token
-        type_jsonpath:
-          auth_token: $.data.token
-    assert_response:
-      status_code: 200
-
-  # 使用Cookie访问需要认证的接口
-  - id: cookie_access_01
-    title: 使用Cookie访问用户信息
-    url: /api/user/profile
-    method: GET
-    headers:
-      Authorization: Bearer ${auth_token}
-    # 传递上一接口的Cookie
-    cookies: ${login_cookies}
-    case_dependence:
-      setup:
-        interface: cookie_login_01
-    extract:
-      response:
-        type_jsonpath:
-          user_profile_id: $.data.profile_id
-    assert_response:
-      status_code: 200
-      assert_username:
-        type_jsonpath: "$.data.username"
-        expect_value: "${username}"
-        assert_type: "=="
-```
-
-### 9. 条件执行与等待策略
-
-支持请求前等待、条件断言等策略。
-
-**场景：轮询等待异步任务完成**
-
-```yaml
-case_common:
-  allure_epic: 异步任务
-  allure_feature: 任务管理
-  allure_story: 轮询等待
-  case_markers: ['async', 'polling']
-
-case_info:
-  - id: async_task_create_01
-    title: 创建异步任务
-    url: /api/task/create
-    method: POST
-    headers:
-      Authorization: Bearer ${token}
-    request_type: json
-    payload:
-      task_type: data_export
-      params:
-        dataset_id: 100
-        format: csv
-    extract:
-      response:
-        type_jsonpath:
-          task_id: $.data.task_id
-    assert_response:
-      status_code: 200
-
-  - id: async_task_wait_01
-    title: 等待任务完成（请求前等待5秒）
-    url: /api/task/status
-    method: GET
-    headers:
-      Authorization: Bearer ${token}
-    request_type: params
-    payload:
-      task_id: ${task_id}
-    # 请求前等待时间（秒）
-    wait_seconds: 5
-    case_dependence:
-      setup:
-        interface: async_task_create_01
-    extract:
-      response:
-        type_jsonpath:
-          task_status: $.data.status
-          task_result_url: $.data.result_url
-    assert_response:
-      status_code: 200
-      # 任务状态为完成或处理中
-      assert_status:
-        type_jsonpath: "$.data.status"
-        expect_value: ["completed", "processing"]
-        assert_type: "contained_by"
-```
-
-**手动轮询等待示例：**
+### 1. 配置定时任务
 
 ```python
-# testcases/test_manual_case/test_async_polling.py
-import pytest
-import time
-from config.settings import GLOBAL_VARS
-from core.requests_utils.base_request import BaseRequest
+# config/settings.py
+SCHEDULE_CONFIG = {
+    "enabled": True,
+    "run_time": "22:00",  # 每天22点执行
+    "env": "test",
+    "report": "yes",
+    "markers": None,
+}
+```
 
-@pytest.mark.async
-def test_polling_task_completion():
-    """
-    轮询等待异步任务完成
-    """
-    task_id = GLOBAL_VARS.get("task_id")
-    token = GLOBAL_VARS.get("token")
-    host = GLOBAL_VARS.get("host")
+### 2. 启动定时任务
+
+```bash
+python run.py -cron
+```
+
+## 十五、Docker 容器化
+
+### 1. 构建镜像
+
+```bash
+docker build -t api-autotest:latest .
+```
+
+### 2. 运行容器
+
+```bash
+docker run -d \
+  --name api-autotest \
+  -v $(pwd)/outputs:/app/outputs \
+  -v $(pwd)/config:/app/config \
+  -v $(pwd)/interfaces:/app/interfaces \
+  api-autotest:latest \
+  python run.py -env test -report yes
+```
+
+## 十六、CI/CD 集成
+
+### 1. GitHub Actions 配置
+
+```yaml
+# .github/workflows/ci.yaml
+name: API Automation Test
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * *'  # 每天2点执行
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
     
-    max_retries = 10
-    retry_interval = 3  # 秒
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
     
-    for i in range(max_retries):
-        req_data = {
-            "url": f"{host}/api/task/status",
-            "method": "GET",
-            "headers": {"Authorization": f"Bearer {token}"},
-            "request_type": "params",
-            "payload": {"task_id": task_id}
-        }
-        
-        response = BaseRequest.send_request(req_data)
-        status = response.json().get("data", {}).get("status")
-        
-        if status == "completed":
-            # 任务完成，获取结果
-            result_url = response.json().get("data", {}).get("result_url")
-            assert result_url is not None
-            GLOBAL_VARS["task_result_url"] = result_url
-            return
-        
-        elif status == "failed":
-            pytest.fail(f"Task {task_id} failed")
-        
-        # 筃待后继续轮询
-        time.sleep(retry_interval)
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
     
-    pytest.fail(f"Task {task_id} did not complete within {max_retries * retry_interval} seconds")
+    - name: Run tests
+      run: |
+        python run.py -env test -report yes
+    
+    - name: Upload Allure report
+      uses: actions/upload-artifact@v2
+      with:
+        name: allure-report
+        path: outputs/report/allure_html
 ```
 
-### 10. 批量数据验证
+## 十七、最佳实践
 
-验证列表数据的批量断言，如分页数据、列表查询结果。
+### 1. 用例编写建议
 
-**场景：验证分页数据结构**
+1. **用例 ID 规范**：使用 `{功能}_{操作}_{序号}` 格式，如 `user_login_01`
+2. **断言完整性**：每个断言都添加 `message` 描述，便于失败定位
+3. **依赖顺序**：`variables` → `interface` → `database`
+4. **参数提取**：优先使用 JSONPath，正则表达式用于复杂场景
+5. **数据清理**：在 `assert_sql` 验证后及时注册清理任务
+
+### 2. 测试数据管理
+
+1. **唯一性标识**：使用时间戳或随机数确保数据唯一
+2. **敏感信息**：通过 `.env` 管理，不硬编码
+3. **测试隔离**：每个用例使用独立测试数据
+4. **数据工厂**：使用 Faker 库生成随机测试数据
+
+### 3. 日志使用规范
+
+1. **TRACE**：提取结果、跳过处理
+2. **DEBUG**：请求/响应详情、数据处理
+3. **INFO**：用例执行、关键事件
+4. **WARNING**：格式错误、配置缺失
+5. **ERROR**：异常情况、断言失败
+6. **CRITICAL**：致命错误
+
+### 4. gRPC 测试建议
+
+1. **使用 gRPC-Gateway**：保持框架统一，无需修改核心代码
+2. **配置环境变量**：网关地址配置在 `config/*.yaml`
+3. **JSON 格式**：便于调试和查看
+4. **完整兼容**：支持所有现有断言、提取、依赖功能
+
+### 5. 团队协作建议
+
+1. **版本控制**：用例文件纳入 Git 管理
+2. **代码审查**：重要用例变更需要 Code Review
+3. **持续集成**：每次提交自动运行测试
+4. **报告分享**：使用通知机制及时分享测试结果
+5. **文档更新**：用例变更同步更新文档
+
+## 十八、常见问题
+
+### Q1: 如何切换测试环境？
+
+```bash
+# 切换到 test 环境
+python run.py -env test
+
+# 切换到 prod 环境
+python run.py -env prod
+```
+
+### Q2: 如何只运行特定用例？
+
+```bash
+# 运行 smoke 标记的用例
+python run.py -m "smoke"
+
+# 运行多个标记
+python run.py -m "smoke or login"
+```
+
+### Q3: 如何调试单个用例？
+
+```bash
+# 使用 pytest 直接运行
+pytest testcases/test_auto_case/yaml_case/workspace/test_yaml_login.py::test_yaml_login_auto -v -s
+```
+
+### Q4: 如何处理用例依赖？
 
 ```yaml
-case_common:
-  allure_epic: 数据查询
-  allure_feature: 列表接口
-  allure_story: 批量验证
-  case_markers: ['list', 'pagination']
-
-case_info:
-  - id: batch_list_01
-    title: 获取用户列表并验证
-    url: /api/user/list
-    method: GET
-    headers:
-      Authorization: Bearer ${token}
-    request_type: params
-    payload:
-      page: 1
-      page_size: 20
-      department: 研发部
-    case_dependence:
-      setup:
-        interface: workflow_login_01
-    extract:
-      response:
-        type_jsonpath:
-          # 提取整个用户列表
-          user_list: $.data.list
-          total_count: $.data.total
-          current_page: $.data.page
-    assert_response:
-      status_code: 200
-      # 验证分页信息
-      assert_page:
-        type_jsonpath: "$.data.page"
-        expect_value: 1
-        assert_type: "=="
-      assert_page_size:
-        type_jsonpath: "$.data.page_size"
-        expect_value: 20
-        assert_type: "=="
-      # 验证列表长度不超过page_size
-      assert_list_length:
-        type_jsonpath: "$.data.list"
-        expect_value: 20
-        assert_type: "len_le"  # 长度小于等于
-      # 验证total大于0
-      assert_total:
-        type_jsonpath: "$.data.total"
-        expect_value: 0
-        assert_type: "gt"  # 大于
+case_dependence:
+  setup:
+    interface: login_01  # 先执行 login_01 提取 token
 ```
 
-**复杂断言示例：**
+### Q5: 如何添加数据库断言？
 
 ```yaml
-  - id: batch_verify_each_01
-    title: 验证每个用户数据结构
-    url: /api/user/list
-    method: GET
-    headers:
-      Authorization: Bearer ${token}
-    request_type: params
-    payload:
-      page: 1
-      page_size: 10
-    assert_response:
-      status_code: 200
-      # 验证第一个用户包含必要字段
-      assert_first_user_id:
-        type_jsonpath: "$.data.list[0].user_id"
-        expect_value: null
-        assert_type: "!="
-      assert_first_user_name:
-        type_jsonpath: "$.data.list[0].username"
-        expect_value: null
-        assert_type: "!="
-        message: "第一个用户的username不能为空"
-      # 验证列表中包含特定用户
-      assert_contains_admin:
-        type_jsonpath: "$.data.list[*].username"
-        expect_value: "admin"
-        assert_type: "contains"
+assert_sql:
+  verify_data:
+    sql: "SELECT * FROM table WHERE condition"
+    expect_value: 1
+    assert_type: "len_eq"
 ```
 
-### 11. 复合断言组合
+### Q6: 如何测试 gRPC 接口？
 
-多种断言类型组合使用，实现精细化验证。
+通过 gRPC-Gateway 转换为 HTTP 测试，无需修改框架代码：
 
-**支持的断言类型：**
+```bash
+# 1. 生成用例
+python generate_grpc_cases.py
 
-| 断言类型 | 说明 | 使用场景 |
-|---------|------|---------|
-| `==` | 相等断言 | 值精确匹配 |
-| `!=` / `not_eq` | 不相等断言 | 值不匹配 |
-| `gt` | 大于断言 | 数值比较 |
-| `ge` | 大于等于断言 | 数值比较 |
-| `lt` | 小于断言 | 数值比较 |
-| `le` | 小于等于断言 | 数值比较 |
-| `contains` | 包含断言 | 列表/字符串包含元素 |
-| `contained_by` | 被包含断言 | 元素在列表中存在 |
-| `startswith` | 开头匹配断言 | 字符串前缀验证 |
-| `endswith` | 结尾匹配断言 | 字符串后缀验证 |
-| `len_eq` | 长度相等断言 | 列表长度验证 |
-| `len_gt` | 长度大于断言 | 列表长度验证 |
-| `len_le` | 长度小于等于断言 | 列表长度验证 |
-| `str_eq` | 字符串相等断言 | 字符串匹配 |
-
-**组合断言示例：**
-
-```yaml
-case_info:
-  - id: combined_assert_01
-    title: 组合断言验证
-    url: /api/product/detail
-    method: GET
-    request_type: params
-    payload:
-      product_id: 10001
-    assert_response:
-      status_code: 200
-      # 数值范围验证
-      assert_price:
-        type_jsonpath: "$.data.price"
-        expect_value: 0
-        assert_type: "gt"  # 价格大于0
-        message: "商品价格必须大于0"
-      assert_stock:
-        type_jsonpath: "$.data.stock"
-        expect_value: 10
-        assert_type: "ge"  # 库存大于等于10
-      # 字符串验证
-      assert_name:
-        type_jsonpath: "$.data.name"
-        expect_value: ""
-        assert_type: "!="
-        message: "商品名称不能为空"
-      assert_code:
-        type_jsonpath: "$.data.product_code"
-        expect_value: "PRD"
-        assert_type: "startswith"  # 商品编码以PRD开头
-      # 列表验证
-      assert_categories:
-        type_jsonpath: "$.data.categories"
-        expect_value: 1
-        assert_type: "len_gt"  # 分类数量大于1
-      assert_has_tag:
-        type_jsonpath: "$.data.tags"
-        expect_value: "热销"
-        assert_type: "contains"  # 标签包含"热销"
+# 2. 运行测试
+python run.py -m "grpc_http"
 ```
 
-### 12. Python 表达式动态计算
+## 十九、技术支持
 
-支持在参数中使用 Python 表达式进行动态计算。
+- **作者**：会飞的🐟
+- **邮箱**：workspace@example.com
+- **项目地址**：[GitHub Repository]
+- **文档版本**：v2.0
 
-**场景：动态计算订单金额**
+## 二十、更新日志
 
-```yaml
-case_info:
-  - id: expr_calc_01
-    title: 使用表达式计算金额
-    url: /api/order/create
-    method: POST
-    request_type: json
-    payload:
-      # 直接使用Python表达式
-      unit_price: 99.00
-      quantity: 3
-      # 表达式计算总价
-      total_price: "${99.00 * 3}"
-      # 表达式计算折扣后价格
-      discounted_price: "${99.00 * 3 * 0.9}"
-      # 使用变量进行计算
-      final_amount: "${total_price - discounted_price}"
-      # 时间戳计算
-      order_timestamp: "${int(time.time())}"
-      # 随机选择
-      payment_method: "${random.choice(['alipay', 'wechat', 'credit_card'])}"
-    assert_response:
-      status_code: 200
-      assert_total:
-        type_jsonpath: "$.data.total_price"
-        expect_value: 297.00
-        assert_type: "=="
-      assert_discount:
-        type_jsonpath: "$.data.discounted_price"
-        expect_value: 267.3
-        assert_type: "=="
-```
+### v2.0 (2026-06-22)
 
-### 13. 自定义函数调用
+**新增功能：**
+- ✨ gRPC 接口测试支持（通过 HTTP 网关转换）
+- ✨ 完整的类型标注支持
+- ✨ 统一的日志级别管理
+- ✨ Mock 服务增强（录制、回放、混合模式）
+- ✨ 失败快照自动捕获
+- ✨ 数据清理策略优化
+- ✨ SSH 隧道数据库连接
 
-在测试用例中调用自定义工具函数。
+**优化改进：**
+- 🎨 统一报告标题格式
+- 🎨 日志级别规范化（TRACE/WARNING/ERROR）
+- 🎨 代码可读性和可维护性提升
+- 📝 README 文档完善
+- 📝 gRPC 测试使用说明
 
-```yaml
-case_info:
-  - id: custom_func_01
-    title: 调用自定义函数
-    url: /api/data/process
-    method: POST
-    request_type: json
-    payload:
-      # 调用 data_tools.py 中的函数
-      file_list: "${list_to_str(target=['file1', 'file2', 'file3'])}"
-      # Base64编码
-      encoded_content: "${get_base64_content('test content')}"
-      # AES加密（需配置密钥）
-      encrypted_pwd: "${aes_encrypt_data(target_str='password123', ace_key='secret_key')}"
-      # 数据切割
-      split_result: "${split_data(target='a,b,c,d', split_char=',', start_index=0, end_index=2)}"
-    assert_response:
-      status_code: 200
-```
+**Bug 修复：**
+- 🐛 修复数据库断言 db_connect 初始化问题
+- 🐛 修复 CaseDependenceHandler db_info 传递问题
+- 🐛 修复日志级别混乱问题
 
-### 最佳实践总结
+---
 
-1. **用例依赖顺序**：`variables` → `interface` → `database`，按此顺序处理依赖
-2. **数据清理时机**：在 `assert_sql` 中验证数据后，及时注册清理任务
-3. **Faker 数据唯一性**：使用时间戳或随机数确保测试数据唯一性
-4. **断言信息完整**：为每个断言添加 `message` 描述，便于失败定位
-5. **等待策略**：异步任务使用轮询 + 超时机制，避免无限等待
-6. **Session 管理**：复杂认证流程建议手动编写 Python 测试用例
-7. **SSH 安全**：SSH 隧道密码通过 `.env` 管理，不要硬编码
-8. **表达式谨慎**：Python 表达式只在受信任的测试代码中使用
+**注意**：本框架持续更新，如有问题或建议请联系作者或提交 Issue。
