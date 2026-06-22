@@ -1250,39 +1250,3 @@ python generate_grpc_cases.py
 # 2. 运行测试
 python run.py -m "grpc_http"
 ```
-
-## 十九、技术支持
-
-- **作者**：会飞的🐟
-- **邮箱**：workspace@example.com
-- **项目地址**：[GitHub Repository]
-- **文档版本**：v2.0
-
-## 二十、更新日志
-
-### v2.0 (2026-06-22)
-
-**新增功能：**
-- ✨ gRPC 接口测试支持（通过 HTTP 网关转换）
-- ✨ 完整的类型标注支持
-- ✨ 统一的日志级别管理
-- ✨ Mock 服务增强（录制、回放、混合模式）
-- ✨ 失败快照自动捕获
-- ✨ 数据清理策略优化
-- ✨ SSH 隧道数据库连接
-
-**优化改进：**
-- 🎨 统一报告标题格式
-- 🎨 日志级别规范化（TRACE/WARNING/ERROR）
-- 🎨 代码可读性和可维护性提升
-- 📝 README 文档完善
-- 📝 gRPC 测试使用说明
-
-**Bug 修复：**
-- 🐛 修复数据库断言 db_connect 初始化问题
-- 🐛 修复 CaseDependenceHandler db_info 传递问题
-- 🐛 修复日志级别混乱问题
-
----
-
-**注意**：本框架持续更新，如有问题或建议请联系作者或提交 Issue。
