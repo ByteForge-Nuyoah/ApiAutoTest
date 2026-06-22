@@ -154,3 +154,8 @@ cython_debug/
 
 # Mock 录制文件（可选）
 # outputs/mock_recordings/*.json
+
+# ========================================
+# oh-my-claudecode
+# ========================================
+.omc/
