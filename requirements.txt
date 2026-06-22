@@ -1,99 +1,78 @@
 # ========================================
 # 测试框架核心
 # ========================================
-pytest==9.1.1
-allure-pytest==2.16.0
-allure-python-commons==2.16.0
-pytest-repeat==0.9.4
-pytest-rerunfailures==16.3
+pytest>=9.0
+allure-pytest>=2.15
+allure-python-commons>=2.15
+pytest-repeat>=0.9
+pytest-rerunfailures>=16.0
 
 # ========================================
 # HTTP 请求
 # ========================================
-requests==2.34.2
-requests-toolbelt==1.0.0
-urllib3==2.7.0
+requests>=2.32
+requests-toolbelt>=1.0
+urllib3>=2.0
 
 # ========================================
 # 数据处理
 # ========================================
-PyYAML==6.0.3
-ruamel.yaml==0.19.1
-openpyxl==3.1.5
-et_xmlfile==2.0.0
-jsonpath==0.82.2
+PyYAML>=6.0
+ruamel.yaml>=0.19
+openpyxl>=3.1
+jsonpath>=0.82
 
 # ========================================
 # 数据验证
 # ========================================
-pydantic==2.13.4
-pydantic_core==2.47.0
-annotated-types==0.7.0
-typing_extensions==4.15.0
-typing-inspection==0.4.2
+pydantic>=2.0
+annotated-types>=0.7
+typing_extensions>=4.0
 
 # ========================================
 # 日志
 # ========================================
-loguru==0.7.3
+loguru>=0.7
 
 # ========================================
 # 数据库
 # ========================================
-PyMySQL==1.2.0
-sshtunnel==0.4.0
+PyMySQL>=1.0
+sshtunnel>=0.4
 
 # ========================================
 # gRPC 支持
 # ========================================
-grpcio==1.81.1
-grpcio-tools==1.81.1
-protobuf==7.35.1
+grpcio>=1.50
+grpcio-tools>=1.50
+protobuf>=4.0
 
 # ========================================
 # 安全与加密
 # ========================================
-cryptography==49.0.0
-bcrypt==5.0.0
-pycryptodome==3.23.0
-PyNaCl==1.6.2
-cffi==2.0.0
-pycparser==3.0
+cryptography>=40.0
+bcrypt>=4.0
+pycryptodome>=3.0
+PyNaCl>=1.5
 
 # ========================================
 # 通知
 # ========================================
-yagmail==0.16.0
+yagmail>=0.15
 
 # ========================================
 # 工具库
 # ========================================
-Faker==40.23.0
-python-dotenv==1.2.2
-schedule==1.2.2
-invoke==3.0.3
-xpinyin==0.7.7
+Faker>=20.0
+python-dotenv>=1.0
+schedule>=1.2
+invoke>=2.0
+xpinyin>=0.7
 
 # ========================================
 # HTML/Email 处理
 # ========================================
-lxml==6.1.1
-cssselect==1.4.0
-cssutils==2.15.0
-premailer==3.10.0
-
-# ========================================
-# 其他依赖
-# ========================================
-attrs==26.1.0
-certifi==2026.6.17
-charset-normalizer==3.4.7
-click==8.4.1
-idna==3.18
-packaging==26.2
-pluggy==1.6.0
-setuptools==82.0.1
-cachetools==7.1.4
-more-itertools==11.1.0
-paramiko==5.0.0
-Pygments==2.20.0
+lxml>=5.0
+cssselect>=1.0
+cssutils>=2.0
+premailer>=3.0
