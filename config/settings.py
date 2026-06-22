@@ -88,6 +88,18 @@ MOCK_CONFIG = {
     "default_delay": 0.0,
 }
 
+# ------------------------------------ 失败快照配置 ----------------------------------------------------#
+FAILURE_SNAPSHOT_CONFIG = {
+    "enabled": True,                    # 是否启用失败快照
+    "save_to_file": True,              # 是否保存到文件
+    "attach_to_allure": True,          # 是否附加到 Allure 报告
+    "max_body_length": 500,            # 响应体最大长度
+    "save_stack_trace": True,          # 是否保存堆栈跟踪
+    "save_context_vars": False,        # 是否保存上下文变量（可能包含敏感信息）
+    "output_dir": os.path.join(REPORT_DIR, "failure_snapshots") if 'REPORT_DIR' in dir() else "outputs/report/failure_snapshots",
+}
+
+
 # ------------------------------------ 多项目配置 ----------------------------------------------------#
 PROJECT_CONFIG = {
     "enabled": True,
