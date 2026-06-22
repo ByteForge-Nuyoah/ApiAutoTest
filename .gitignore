@@ -1,10 +1,14 @@
-# Python compilation
+# ========================================
+# Python 编译文件
+# ========================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 
-# Virtual environments
+# ========================================
+# 虚拟环境
+# ========================================
 venv/
 .venv/
 env/
@@ -12,7 +16,9 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDE settings
+# ========================================
+# IDE 和编辑器
+# ========================================
 .idea/
 .vscode/
 .trae/
@@ -21,19 +27,27 @@ venv.bak/
 *~
 *.sublime-workspace
 *.sublime-project
+.spyderproject
+.spyproject
+.ropeproject
 
-# macOS system files
+# ========================================
+# 操作系统文件
+# ========================================
+# macOS
 .DS_Store
 .AppleDouble
 .LSOverride
 ._*
 
-# Windows system files
+# Windows
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-# Test results and coverage
+# ========================================
+# 测试和覆盖率
+# ========================================
 .pytest_cache/
 .coverage
 .coverage.*
@@ -46,33 +60,43 @@ coverage.xml
 .nox/
 .tox/
 
-# Project outputs
+# ========================================
+# 项目输出目录
+# ========================================
 outputs/
 logs/
 reports/
 allure-report/
 allure_html/
 allure_report.zip
+mock_recordings/
 
-# Generated test cases
+# ========================================
+# 自动生成的测试用例
+# ========================================
 testcases/test_auto_case/
 
-# Log files
+# ========================================
+# 日志文件
+# ========================================
 *.log
 
-# Sensitive environment variables
+# ========================================
+# 敏感配置文件
+# ========================================
 .env
 .env.local
 .env.*.local
 !.env.example
 
-# Distribution / Packaging
+# ========================================
+# 分发和打包
+# ========================================
 dist/
 build/
 develop-eggs/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -83,43 +107,50 @@ wheels/
 *.egg
 MANIFEST
 
+# ========================================
 # Jupyter Notebook
+# ========================================
 .ipynb_checkpoints
 
+# ========================================
 # pyenv
+# ========================================
 .python-version
 
+# ========================================
 # Celery
+# ========================================
 celerybeat-schedule
 celerybeat.pid
 
-# SageMath parsed files
+# ========================================
+# 其他工具
+# ========================================
+# SageMath
 *.sage.py
 
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-
-# Pyre type checker
+# Pyre
 .pyre/
 
-# pytype static type analyzer
+# pytype
 .pytype/
 
-# Cython debug symbols
+# Cython
 cython_debug/
 
-# Temporary files
+# ========================================
+# 临时文件
+# ========================================
 *.tmp
 *.bak
 *.swp
 *~.nib
+
+# ========================================
+# 项目特定
+# ========================================
+# 保留 lib 目录（Allure 工具）
+!lib/
+
+# Mock 录制文件（可选）
+# outputs/mock_recordings/*.json
