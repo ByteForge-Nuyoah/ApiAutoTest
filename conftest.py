@@ -214,6 +214,15 @@ def pytest_sessionfinish(session, exitstatus):
 
 
 @pytest.fixture(scope="session")
+def env_config():
+    """
+    环境配置 fixture
+    :return: 环境配置字典
+    """
+    return GLOBAL_VARS
+
+
+@pytest.fixture(scope="session")
 def cleanup_manager():
     """
     数据清理管理器 fixture
