@@ -143,7 +143,8 @@ class GrpcForYaml:
 
     def yaml_file_dump(self):
         """
-        生成 YAML 用例文件
+        生成 YAML 用例文件（转换为标准 HTTP RESTful API 格式）
+        支持通过 gRPC-Gateway 或 gRPC-Web 代理进行测试
         """
         descriptor_set = self._compile_proto()
         self._parse_descriptor(descriptor_set)
@@ -151,56 +152,67 @@ class GrpcForYaml:
         for service in self.services:
             service_name = service['name']
             package_name = service['package']
-            
+
             case_list = []
             for method in service['methods']:
                 method_name = method.name
                 input_type = method.input_type
-                
+
                 # 生成默认请求体
                 payload = self._generate_payload(input_type)
-                
+
+                # 转换为 HTTP RESTful API 格式
+                # 使用 POST 方法，通过 JSON 格式传输数据
+                # URL 格式: /{package}.{service}/{method}
+                # 这种格式通常用于 gRPC-Gateway 或 gRPC-Web 代理
                 case_info = {
                     "id": f"{method_name}_01",
                     "title": f"测试 {method_name}",
                     "run": True,
                     "severity": "normal",
-                    "url": f"grpc://{package_name}.{service_name}/{method_name}", # 模拟 GRPC URL
-                    "method": "GRPC",
+                    # 转换为 HTTP URL 格式（需要配置 gRPC-Gateway 代理）
+                    "url": f"/{package_name}.{service_name}/{method_name}",
+                    "method": "POST",  # 使用 POST 方法
                     "headers": {
-                        "Content-Type": "application/grpc"
+                        "Content-Type": "application/json"
                     },
-                    "request_type": "grpc",
+                    "request_type": "json",  # 使用 JSON 格式
                     "payload": payload,
                     "assert_response": {
-                        "status_code": 0 # GRPC OK status
+                        "status_code": 200,  # HTTP 200 表示成功
+                        "assert_code": {
+                            "message": f"断言 {method_name} 响应成功",
+                            "expect_value": 0,
+                            "assert_type": "==",
+                            "type_jsonpath": "$.code"
+                        }
                     }
                 }
                 case_list.append(case_info)
-            
+
             # 构建 YAML 内容
             yaml_data = {
                 "case_common": {
-                    "allure_epic": f"{package_name} Epic",
+                    "allure_epic": f"{package_name}",
                     "allure_feature": service_name,
-                    "allure_story": "GRPC Interface Tests",
-                    "case_markers": ["grpc", service_name.lower()]
+                    "allure_story": "GRPC转HTTP接口测试",
+                    "case_markers": ["grpc_http", service_name.lower()]
                 },
                 "case_info": case_list
             }
-            
+
             # 保存文件
             file_name = f"test_{service_name}.yaml"
             file_path = os.path.join(self.case_dir, file_name)
-            
+
             yaml_dumper = yaml.YAML()
             yaml_dumper.allow_unicode = True
             yaml_dumper.default_flow_style = False
-            
+
             with open(file_path, "w", encoding="utf-8") as f:
                 yaml_dumper.dump(yaml_data, f)
-            
-            logger.info(f"Generated GRPC test case: {file_path}")
+
+            logger.info(f"Generated GRPC-HTTP test case: {file_path}")
 
 if __name__ == "__main__":
     # 测试代码
