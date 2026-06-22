@@ -8,10 +8,10 @@ import os
 import pytest
 from datetime import datetime
 from loguru import logger
-from config.settings import REPORT_DIR, CUSTOM_MARKERS, ENV_DIR, GLOBAL_VARS, DATA_CLEANUP_CONFIG, MOCK_CONFIG
+from config.settings import REPORT_DIR, CUSTOM_MARKERS, ENV_DIR, GLOBAL_VARS, DATA_CLEANUP_CONFIG, MOCK_CONFIG, FAILURE_SNAPSHOT_CONFIG
 from utils.files_utils.files_handle import load_yaml_file
 from utils.database_utils.data_cleanup import get_cleanup_manager
-from utils.tools.failure_snapshot import get_snapshot_manager, capture_failure
+from utils.tools.failure_snapshot import capture_failure, get_all_snapshots
 from utils.tools.exception_handler import handle_exception
 from utils.tools.mock_service import get_mock_service, MockMode
 
@@ -141,36 +141,46 @@ def pytest_runtest_makereport(item, call):
 
 def _capture_failure_snapshot(item, call, report):
     """
-    捕获失败快照
+    捕获失败快照（优化版）
     :param item: 测试项
     :param call: 调用信息
     :param report: 测试报告
     """
+    if not FAILURE_SNAPSHOT_CONFIG.get("enabled", True):
+        return
+
     try:
         test_id = item.nodeid
         test_name = item.name
-        
+
         exception = call.excinfo.value if call.excinfo else Exception("Unknown error")
-        
+
+        # 捕获快照
         snapshot = capture_failure(
             test_id=test_id,
             test_name=test_name,
             exception=exception
         )
-        
+
+        # 从测试项中提取请求和响应信息
         if hasattr(item, 'funcargs'):
             if 'request_info' in item.funcargs:
-                snapshot.set_request_info(**item.funcargs['request_info'])
+                snapshot.set_request(**item.funcargs['request_info'])
             if 'response_info' in item.funcargs:
-                snapshot.set_response_info(**item.funcargs['response_info'])
-        
-        snapshot.add_log(f"测试失败: {report.failure_message}")
-        
-        snapshot.save_to_file(os.path.join(REPORT_DIR, "failure_snapshots"))
-        
+                snapshot.set_response(**item.funcargs['response_info'])
+
+        # 保存到文件
+        if FAILURE_SNAPSHOT_CONFIG.get("save_to_file", True):
+            output_dir = FAILURE_SNAPSHOT_CONFIG.get("output_dir", "outputs/report/failure_snapshots")
+            snapshot.save_to_file(output_dir)
+
+        # 附加到 Allure 报告
+        if FAILURE_SNAPSHOT_CONFIG.get("attach_to_allure", True):
+            snapshot.attach_to_allure()
+
         logger.error(
             f"\n{'='*60}\n"
-            f"测试失败快照\n"
+            f"测试失败快照已捕获\n"
             f"测试ID: {test_id}\n"
             f"测试名称: {test_name}\n"
             f"失败原因: {str(exception)}\n"
@@ -187,7 +197,7 @@ def pytest_sessionfinish(session, exitstatus):
     保存 Mock 记录
     """
     cleanup_mode = session.config.getoption("--cleanup")
-    
+
     if cleanup_mode == "skip":
         logger.info("跳过数据清理")
     elif cleanup_mode in ["auto", "manual"]:
@@ -195,11 +205,11 @@ def pytest_sessionfinish(session, exitstatus):
         cleanup_manager.cleanup_all()
         cleanup_manager.close_all()
         logger.info("数据清理完成")
-    
-    snapshot_manager = get_snapshot_manager()
-    if snapshot_manager._snapshots:
-        snapshot_manager.save_all()
-        summary = snapshot_manager.get_summary()
+
+    # 统计失败快照
+    snapshots = get_all_snapshots()
+    if snapshots:
+        logger.info(f"失败快照统计: {len(snapshots)} 个")
         logger.info(f"失败快照统计: {summary['total_snapshots']} 个")
     
     mock_service = get_mock_service()
