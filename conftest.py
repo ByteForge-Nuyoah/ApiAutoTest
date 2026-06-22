@@ -210,7 +210,6 @@ def pytest_sessionfinish(session, exitstatus):
     snapshots = get_all_snapshots()
     if snapshots:
         logger.info(f"失败快照统计: {len(snapshots)} 个")
-        logger.info(f"失败快照统计: {summary['total_snapshots']} 个")
     
     mock_service = get_mock_service()
     if mock_service.enabled and mock_service.mode in [MockMode.RECORD, MockMode.MIXED]:
